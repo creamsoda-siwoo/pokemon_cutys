@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포켓몬 짝맞추기</title>
+<style>
+  :root {
+    --bg: #fff8e7; --ink: #2b2b3a; --muted: #6b6b80; --card: #ffffff;
+    --back1: #ef4444; --back2: #f8fafc; --accent: #3b82f6; --ok: #22c55e; --line: #e5e1d3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17171f; --ink: #f1f1f6; --muted: #a0a0b5; --card: #24243a; --back2: #e5e7eb; --line: #34344a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { margin: 0 0 4px; font-size: 1.7rem; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; font-weight: 600; }
+  .stat span { color: var(--muted); font-weight: 400; margin-right: 4px; }
+  button, select { font: inherit; padding: 7px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .grid { display: grid; gap: 10px; }
+  .card { aspect-ratio: 3/4; perspective: 800px; cursor: pointer; border: 0; padding: 0; background: none; }
+  .inner { position: relative; width: 100%; height: 100%; transition: transform .45s; transform-style: preserve-3d; }
+  .card.open .inner, .card.done .inner { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; backface-visibility: hidden; border-radius: 12px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  .back { background: linear-gradient(var(--back1) 0 46%, #222 46% 54%, var(--back2) 54%); box-shadow: 0 2px 6px #0003; }
+  .back::after { content: ""; width: 30%; aspect-ratio: 1; border-radius: 50%; background: var(--back2); border: 5px solid #222; }
+  .front { background: var(--card); border: 2px solid var(--line); transform: rotateY(180deg); }
+  .front img { width: 80%; aspect-ratio: 1; object-fit: contain; margin-bottom: 6px; }
+  .front small { font-size: .72rem; color: var(--muted); margin-top: -4px; }
+  .card.done .front { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--card)); }
+  .overlay { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; padding: 16px; }
+  .overlay.show { display: flex; }
+  .modal { background: var(--card); border-radius: 16px; padding: 24px; max-width: 360px; width: 100%; text-align: center; }
+  .modal h2 { margin-top: 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>포켓몬 짝맞추기</h1>
+  <p class="sub">카드를 뒤집어 같은 포켓몬 두 장을 찾아보세요! · <a href="index.html">← 포켓볼 던지기로</a></p>
+  <div class="bar">
+    <select id="level" aria-label="난이도">
+      <option value="6">쉬움 (12장)</option>
+      <option value="8" selected>보통 (16장)</option>
+      <option value="12">어려움 (24장)</option>
+    </select>
+    <button class="primary" id="restart">새 게임</button>
+    <div class="stat"><span>시도</span><b id="moves">0</b></div>
+    <div class="stat"><span>시간</span><b id="time">0</b>초</div>
+    <div class="stat"><span>최고</span><b id="best">-</b></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<div class="overlay" id="win">
+  <div class="modal">
+    <h2>🎉 클리어!</h2>
+    <p id="winText"></p>
+    <button class="primary" id="again">다시 하기</button>
+  </div>
+</div>
+
+<script>
+const POKEMON = [
+  [1,"이상해씨"],[4,"파이리"],[7,"꼬부기"],[25,"피카츄"],[39,"푸린"],[52,"나옹"],
+  [54,"고라파덕"],[79,"야돈"],[94,"팬텀"],[129,"잉어킹"],[131,"라프라스"],[133,"이브이"],
+  [143,"잠만보"],[147,"미뇽"],[151,"뮤"],[152,"치코리타"],[155,"브케인"],[158,"리아코"],
+  [175,"토게피"],[196,"에브이"],[197,"블래키"],[255,"아차모"],[258,"물짱이"],[393,"팽도리"]
+];
+const sprite = id => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+// preload
+POKEMON.forEach(([id]) => { new Image().src = sprite(id); });
+
+const $ = id => document.getElementById(id);
+let first = null, lock = false, moves = 0, matched = 0, pairs = 8, seconds = 0, timer = null;
+
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const bestKey = () => "pokemon-match-best-" + pairs;
+function loadBest() { try { return JSON.parse(localStorage.getItem(bestKey())); } catch { return null; } }
+function saveBest(v) { try { localStorage.setItem(bestKey(), JSON.stringify(v)); } catch {} }
+function showBest() { const b = loadBest(); $("best").textContent = b ? `${b.moves}회 / ${b.seconds}초` : "-"; }
+
+function newGame() {
+  pairs = +$("level").value;
+  first = null; lock = false; moves = 0; matched = 0; seconds = 0;
+  clearInterval(timer); timer = null;
+  $("moves").textContent = 0; $("time").textContent = 0; $("win").classList.remove("show");
+  showBest();
+  const chosen = shuffle([...POKEMON]).slice(0, pairs);
+  const deck = shuffle([...chosen, ...chosen]);
+  const grid = $("grid");
+  const cols = pairs === 6 ? 4 : pairs === 8 ? 4 : 6;
+  grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  grid.innerHTML = "";
+  deck.forEach(([id, name]) => {
+    const b = document.createElement("button");
+    b.className = "card"; b.dataset.id = id; b.setAttribute("aria-label", "뒤집힌 카드");
+    b.innerHTML = `<div class="inner"><div class="face back"></div>
+      <div class="face front"><img src="${sprite(id)}" alt="${name}"><small>${name}</small></div></div>`;
+    b.addEventListener("click", () => flip(b, name));
+    grid.appendChild(b);
+  });
+}
+
+function flip(card, name) {
+  if (lock || card === first || card.classList.contains("done") || card.classList.contains("open")) return;
+  if (!timer) timer = setInterval(() => { $("time").textContent = ++seconds; }, 1000);
+  card.classList.add("open"); card.setAttribute("aria-label", name);
+  if (!first) { first = card; return; }
+  moves++; $("moves").textContent = moves;
+  if (first.dataset.id === card.dataset.id) {
+    first.classList.add("done"); card.classList.add("done");
+    first = null; matched++;
+    if (matched === pairs) win();
+  } else {
+    lock = true;
+    const a = first; first = null;
+    setTimeout(() => {
+      [a, card].forEach(c => { c.classList.remove("open"); c.setAttribute("aria-label", "뒤집힌 카드"); });
+      lock = false;
+    }, 800);
+  }
+}
+
+function win() {
+  clearInterval(timer);
+  const b = loadBest();
+  const isBest = !b || moves < b.moves || (moves === b.moves && seconds < b.seconds);
+  if (isBest) saveBest({ moves, seconds });
+  showBest();
+  $("winText").textContent = `${moves}번 시도, ${seconds}초 만에 모두 찾았어요!` + (isBest ? " 🏆 최고 기록!" : "");
+  setTimeout(() => $("win").classList.add("show"), 500);
+}
+
+$("restart").onclick = newGame;
+$("again").onclick = newGame;
+$("level").onchange = newGame;
+newGame();
+</script>
+</body>
+</html>
