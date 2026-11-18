@@ -61,11 +61,11 @@ export function levelUp(m: Mon, msgs: string[]) {
 
 export const canEvolve = (m: Mon) => { const e = sp(m).evo; return !!e && m.level >= e.level && m.hp > 0; };
 
-export function evolve(m: Mon) {
+export function evolve(m: Mon, to?: number) {
   const s = sp(m);
   if (!s.evo) return;
   const ratio = m.hp / stats(m).maxHp;
-  m.id = s.evo.to;
+  m.id = to && s.evo.choices?.includes(to) ? to : s.evo.to;
   m.hp = Math.max(1, Math.round(stats(m).maxHp * ratio));
 }
 

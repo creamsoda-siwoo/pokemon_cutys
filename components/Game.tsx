@@ -9,9 +9,19 @@ import {
   canEvolve, catchChance, effectiveSpeed, enemyChoose, evolve, Fighter, giveXp, levelUp, makeMon, Mon,
   monMoves, performMove, pick, randInt, rnd, sp, stats, xpNeeded, xpReward,
 } from "@/lib/engine";
+import { loadMuted, setMuted, sfx } from "@/lib/sound";
+
+function evSound(ev?: { text: string; hit?: string; dmg?: { color: string; text: string }; ball?: boolean }) {
+  if (!ev) return;
+  if (ev.text.includes("쓰러졌다")) sfx("faint");
+  else if (ev.ball) sfx("ball");
+  else if (ev.hit) sfx(ev.dmg?.color === "#f97316" ? "super" : ev.dmg?.color === "#94a3b8" ? "weak" : "hit");
+  else if (ev.dmg?.text.startsWith("+")) sfx("heal");
+}
 
 // ---------------- 타입 ----------------
 type NodeKind = "battle" | "elite" | "camp" | "shop" | "event" | "boss";
+const TYPES = Object.keys(TYPE_COLOR) as Type[];
 type Screen = "title" | "starter" | "map" | "battle" | "camp" | "shop" | "event" | "recruit" | "evolve" | "gameover" | "victory";
 
 interface Run {
@@ -108,6 +118,8 @@ export default function Game() {
   const [toast, setToast] = useState<string | null>(null);
   const [swapFor, setSwapFor] = useState(false);
   const [evoStage, setEvoStage] = useState(0);
+  const [mute, setMute] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const bRef = useRef<Battle | null>(null);
   const [battleView, setBattleView] = useState<Battle | null>(null);
@@ -118,6 +130,7 @@ export default function Game() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMeta(load(META_KEY, { dex: [], bestRegion: 0, clears: 0 }));
+    setMute(loadMuted());
     setHasSave(!!load<Run | null>(SAVE_KEY, null));
   }, []);
   // 저장 (전투 밖)
@@ -234,16 +247,17 @@ export default function Game() {
   }
 
   // 진화
-  function doEvolve() {
+  function doEvolve(to?: number) {
     if (!after) return;
     const uid = after.evos[0];
     setRun(r => {
       if (!r) return r;
       const party = clone(r.party);
       const m = party.find(p => p.uid === uid);
-      if (m) { evolve(m); addDex(m.id); }
+      if (m) { evolve(m, to); addDex(m.id); }
       return { ...r, party };
     });
+    sfx("fanfare");
     setEvoStage(2);
   }
   function evolveNext() {
@@ -263,7 +277,7 @@ export default function Game() {
     party.push(m);
     addDex(m.id);
     setRun({ ...run, party, caught: run.caught + 1 });
-    setToast(`${sp(m).name}이(가) 동료가 되었다! 🎉`);
+    setToast(`${sp(m).name}이(가) 동료가 되었다! 🎉`); sfx("catch");
     processAfter({ ...after, recruit: null });
   }
   function declineRecruit() { if (after) processAfter({ ...after, recruit: null }); }
@@ -272,7 +286,7 @@ export default function Game() {
   function buy(k: ItemKey) {
     if (!run || run.gold < ITEMS[k].price) return;
     setRun({ ...run, gold: run.gold - ITEMS[k].price, items: { ...run.items, [k]: run.items[k] + 1 } });
-    setToast(`${ITEMS[k].name} 구매!`);
+    setToast(`${ITEMS[k].name} 구매!`); sfx("buy");
   }
 
   // 파티 화면에서 아이템 사용
@@ -326,7 +340,7 @@ export default function Game() {
     const step = () => {
       const bb = bRef.current; if (!bb) return;
       if (bb.evIdx < bb.events.length - 1) {
-        bb.evIdx++; rerender();
+        bb.evIdx++; rerender(); evSound(bb.events[bb.evIdx]);
         timer.current = setTimeout(step, bb.events[bb.evIdx].hit ? 900 : 750);
       } else finishAnim();
     };
@@ -342,7 +356,7 @@ export default function Game() {
     const b = bRef.current; if (!b) return;
     const o = b.outcome;
     if (o === "won" || o === "caught") { winBattle(); return; }
-    if (o === "lost") { b.phase = "lost"; rerender(); return; }
+    if (o === "lost") { b.phase = "lost"; rerender(); sfx("lose"); return; }
     if (o === "switch") { b.phase = "forceSwitch"; rerender(); return; }
     b.phase = "choose"; rerender();
   }
@@ -446,6 +460,8 @@ export default function Game() {
       msgs.push(`${ITEMS[b.dropItem].emoji} ${ITEMS[b.dropItem].name}을(를) 얻었다!`);
     }
     b.result = msgs; b.phase = "won"; rerender();
+    sfx(b.caught ? "catch" : "win");
+    if (msgs.some(t => t.includes("레벨이"))) setTimeout(() => sfx("levelup"), 700);
   }
 
   function leaveBattle() {
@@ -480,6 +496,35 @@ export default function Game() {
   return (
     <div className="game" style={{ ["--region-bg" as string]: region.bg }}>
       {toast && <div className="toast">{toast}</div>}
+      <div className="toolbar">
+        <button title="타입 상성표" onClick={() => setHelpOpen(true)}>📊 상성표</button>
+        <button title={mute ? "소리 켜기" : "소리 끄기"} onClick={() => { setMuted(!mute); setMute(!mute); if (mute) sfx("click"); }}>
+          {mute ? "🔇" : "🔊"}
+        </button>
+      </div>
+      {helpOpen && (
+        <div className="modal-bg" onClick={() => setHelpOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>📊 타입 상성표</h2>
+            <p className="muted small">왼쪽이 <b>공격하는 기술</b>, 위쪽이 <b>맞는 포켓몬</b>의 타입이에요.
+              <span className="eff2"> 2 </span> 효과 굉장 · <span className="eff05"> ½ </span> 별로</p>
+            <div className="typechart-wrap">
+              <table className="typechart">
+                <thead><tr><th></th>{TYPES.map(t => <th key={t}><TypeBadge t={t} /></th>)}</tr></thead>
+                <tbody>
+                  {TYPES.map(a => (
+                    <tr key={a}><th><TypeBadge t={a} /></th>
+                      {TYPES.map(d => { const e = effectiveness(a, d); return <td key={d} className={e > 1 ? "eff2" : e < 1 ? "eff05" : ""}>{e > 1 ? "2" : e < 1 ? "½" : ""}</td>; })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted small">💡 기술과 포켓몬 타입이 같으면 위력 1.3배! 이브이는 Lv.10에 5가지 중 원하는 모습으로 진화할 수 있어요.</p>
+            <button className="primary" onClick={() => setHelpOpen(false)}>닫기</button>
+          </div>
+        </div>
+      )}
 
       {screen === "title" && (
         <div className="panel center title">
@@ -624,7 +669,18 @@ export default function Game() {
             {evoStage === 0 && <>
               <h2>어라…!? {fromName}의 상태가…!</h2>
               <img className="bigart evo-glow" src={art(m.id)} alt="" />
-              <button className="primary" onClick={() => { setEvoStage(1); setTimeout(doEvolve, 2200); }}>✨ 지켜보기</button>
+              {sp(m).evo?.choices ? <>
+                <p>어떤 모습으로 진화할까? 하나를 골라주세요!</p>
+                <div className="evochoices">
+                  {sp(m).evo!.choices!.map(id => (
+                    <button key={id} onClick={() => { sfx("evolve"); setEvoStage(1); setTimeout(() => doEvolve(id), 2200); }}
+                      style={{ ["--tc" as string]: TYPE_COLOR[SPECIES[id].type] }}>
+                      <img src={art(id)} alt="" />
+                      <b>{SPECIES[id].name}</b> <TypeBadge t={SPECIES[id].type} />
+                    </button>
+                  ))}
+                </div>
+              </> : <button className="primary" onClick={() => { sfx("evolve"); setEvoStage(1); setTimeout(() => doEvolve(), 2200); }}>✨ 지켜보기</button>}
             </>}
             {evoStage === 1 && <>
               <h2>…!</h2>

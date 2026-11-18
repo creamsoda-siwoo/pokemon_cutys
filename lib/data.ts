@@ -84,7 +84,7 @@ export function movesFor(type: Type, level: number): string[] {
 export interface Species {
   id: number; name: string; type: Type;
   hp: number; atk: number; def: number; spd: number;
-  evo?: { to: number; level: number };
+  evo?: { to: number; level: number; choices?: number[] };
 }
 
 const S = (id: number, name: string, type: Type, hp: number, atk: number, def: number, spd: number, evo?: [number, number]): Species =>
@@ -100,7 +100,9 @@ export const SPECIES: Record<number, Species> = Object.fromEntries([
   S(16, "구구", "노말", 40, 45, 40, 56, [17, 8]), S(17, "피죤", "노말", 63, 60, 55, 71, [18, 15]), S(18, "피죤투", "노말", 83, 80, 75, 101),
   S(19, "꼬렛", "노말", 30, 56, 35, 72, [20, 9]), S(20, "레트라", "노말", 55, 81, 60, 97),
   S(43, "뚜벅쵸", "풀", 45, 50, 55, 30, [44, 8]), S(44, "냄새꼬", "풀", 60, 65, 70, 40, [45, 15]), S(45, "라플레시아", "풀", 75, 80, 85, 50),
-  S(133, "이브이", "노말", 55, 55, 50, 55, [196, 10]), S(196, "에브이", "에스퍼", 65, 130, 60, 110),
+  S(133, "이브이", "노말", 55, 55, 50, 55, [134, 10]),
+  S(134, "샤미드", "물", 130, 65, 60, 65), S(135, "쥬피썬더", "전기", 65, 65, 60, 130), S(136, "부스터", "불꽃", 65, 130, 60, 65),
+  S(196, "에브이", "에스퍼", 65, 130, 60, 110), S(197, "블래키", "고스트", 95, 65, 110, 65),
   S(143, "잠만보", "노말", 160, 110, 65, 30),
   // 호수
   S(54, "고라파덕", "물", 50, 52, 48, 55, [55, 11]), S(55, "골덕", "물", 80, 82, 78, 85),
@@ -150,3 +152,6 @@ export const ITEMS: Record<ItemKey, { name: string; emoji: string; price: number
   candy: { name: "이상한사탕", emoji: "🍬", price: 120, desc: "레벨 1 상승" },
   revive: { name: "기력의조각", emoji: "💎", price: 100, desc: "기절한 포켓몬 HP 50%로 부활" },
 };
+
+// 이브이는 진화할 때 5가지 중 하나를 고를 수 있다
+SPECIES[133].evo!.choices = [134, 135, 136, 196, 197];
