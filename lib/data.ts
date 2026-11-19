@@ -123,8 +123,34 @@ export const SPECIES: Record<number, Species> = Object.fromEntries([
 
 export const STARTERS = [1, 4, 7, 25];
 
-export const art = (id: number) =>
-  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${id}.png`;
+export const art = (id: number, shiny = false) =>
+  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${shiny ? "shiny/" : ""}${id}.png`;
+
+export type Difficulty = "easy" | "normal" | "hard";
+export const DIFFICULTY: Record<Difficulty, { name: string; emoji: string; desc: string; foe: number; heal: number; gold: number }> = {
+  easy: { name: "쉬움", emoji: "🌱", desc: "적이 약하고 승리 후 HP 35% 회복", foe: 0.8, heal: 0.35, gold: 1.2 },
+  normal: { name: "보통", emoji: "⚔️", desc: "기본 난이도", foe: 1, heal: 0.2, gold: 1 },
+  hard: { name: "어려움", emoji: "🔥", desc: "적이 강하고 회복이 적지만 골드 1.5배", foe: 1.15, heal: 0.1, gold: 1.5 },
+};
+
+export const SHINY_RATE = 1 / 20;
+
+export const ACHIEVEMENTS: { id: string; emoji: string; name: string; desc: string }[] = [
+  { id: "first_win", emoji: "⚔️", name: "첫 승리", desc: "배틀에서 처음으로 이기기" },
+  { id: "evolve", emoji: "✨", name: "진화의 순간", desc: "포켓몬을 처음으로 진화시키기" },
+  { id: "eevee", emoji: "🦊", name: "이브이 마스터", desc: "이브이를 진화시키기" },
+  { id: "full_party", emoji: "👨‍👩‍👧‍👦", name: "든든한 동료들", desc: "파티를 4마리로 채우기" },
+  { id: "catch", emoji: "🔴", name: "포획 성공", desc: "몬스터볼로 포켓몬 잡기" },
+  { id: "shiny", emoji: "🌟", name: "반짝반짝", desc: "색이 다른 포켓몬을 동료로 맞이하기" },
+  { id: "rich", emoji: "💰", name: "부자", desc: "골드 500G 모으기" },
+  { id: "dex20", emoji: "📖", name: "도감 수집가", desc: "도감 20종 채우기" },
+  { id: "boss_143", emoji: "😴", name: "숲의 주인", desc: "잠만보 쓰러뜨리기" },
+  { id: "boss_130", emoji: "🌊", name: "호수의 주인", desc: "갸라도스 쓰러뜨리기" },
+  { id: "boss_94", emoji: "👻", name: "동굴의 주인", desc: "팬텀 쓰러뜨리기" },
+  { id: "boss_149", emoji: "🐉", name: "화산의 주인", desc: "망나뇽 쓰러뜨리기" },
+  { id: "champion", emoji: "🏆", name: "챔피언", desc: "최후의 탑의 뮤츠 쓰러뜨리기" },
+  { id: "hard_clear", emoji: "🔥", name: "진정한 챔피언", desc: "어려움 난이도로 클리어" },
+];
 
 export interface Region {
   name: string; emoji: string; bg: string; levels: [number, number];

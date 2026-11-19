@@ -3,11 +3,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  art, effectiveness, FLOORS_PER_REGION, ItemKey, ITEMS, REGIONS, SPECIES, STARTERS, TYPE_COLOR, Type,
+  ACHIEVEMENTS, art, DIFFICULTY, Difficulty, effectiveness, FLOORS_PER_REGION, ItemKey, ITEMS, REGIONS, SHINY_RATE,
+  SPECIES, STARTERS, TYPE_COLOR, Type,
 } from "@/lib/data";
 import {
   canEvolve, catchChance, effectiveSpeed, enemyChoose, evolve, Fighter, giveXp, levelUp, makeMon, Mon,
-  monMoves, performMove, pick, randInt, rnd, sp, stats, xpNeeded, xpReward,
+  monArt, monMoves, performMove, pick, randInt, rnd, sp, stats, xpNeeded, xpReward,
 } from "@/lib/engine";
 import { loadMuted, setMuted, sfx } from "@/lib/sound";
 
@@ -27,8 +28,9 @@ type Screen = "title" | "starter" | "map" | "battle" | "camp" | "shop" | "event"
 interface Run {
   party: Mon[]; gold: number; items: Record<ItemKey, number>;
   region: number; floor: number; choices: NodeKind[]; wins: number; caught: number;
+  difficulty?: Difficulty;
 }
-interface Meta { dex: number[]; bestRegion: number; clears: number }
+interface Meta { dex: number[]; bestRegion: number; clears: number; ach?: string[]; shinies?: number[] }
 interface After { evos: string[]; recruit: Mon | null; next: "map" | "region" | "victory" | "stay" }
 
 interface Ev {
@@ -94,9 +96,9 @@ function MonMini({ m, onClick, active, extra }: { m: Mon; onClick?: () => void; 
   const st = stats(m);
   return (
     <div className={`monmini ${m.hp <= 0 ? "fainted" : ""} ${active ? "active" : ""} ${onClick ? "clickable" : ""}`} onClick={onClick}>
-      <img src={art(m.id)} alt={sp(m).name} />
+      <img src={monArt(m)} alt={sp(m).name} />
       <div className="mm-body">
-        <div className="mm-name"><b>{sp(m).name}</b> <small>Lv.{m.level}</small> <TypeBadge t={sp(m).type} />
+        <div className="mm-name">{m.shiny && <span title="색이 다른 포켓몬">✨</span>}<b>{sp(m).name}</b> <small>Lv.{m.level}</small> <TypeBadge t={sp(m).type} />
           {m.status === "burn" && " 🔥"}{m.status === "paralyze" && " ⚡"}</div>
         <HpBar hp={m.hp} max={st.maxHp} />
         <div className="xpbar"><div style={{ width: `${(m.xp / xpNeeded(m.level)) * 100}%` }} /></div>
@@ -113,13 +115,16 @@ export default function Game() {
   const [meta, setMeta] = useState<Meta>({ dex: [], bestRegion: 0, clears: 0 });
   const [hasSave, setHasSave] = useState(false);
   const [after, setAfter] = useState<After | null>(null);
-  const [eventView, setEventView] = useState<{ title: string; text: string; img?: number; emoji?: string } | null>(null);
+  const [eventView, setEventView] = useState<{ title: string; text: string; img?: string; emoji?: string } | null>(null);
   const [partyOpen, setPartyOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [swapFor, setSwapFor] = useState(false);
   const [evoStage, setEvoStage] = useState(0);
   const [mute, setMute] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [achOpen, setAchOpen] = useState(false);
+  const [achToast, setAchToast] = useState<string | null>(null);
+  const [diff, setDiff] = useState<Difficulty>("normal");
 
   const bRef = useRef<Battle | null>(null);
   const [battleView, setBattleView] = useState<Battle | null>(null);
@@ -143,11 +148,43 @@ export default function Game() {
     setMeta(m => ({ ...m, dex: [...new Set([...m.dex, ...ids])] }));
   }, []);
 
+  // 업적
+  const unlock = useCallback((id: string) => {
+    setMeta(m => {
+      if (m.ach?.includes(id)) return m;
+      const a = ACHIEVEMENTS.find(x => x.id === id);
+      if (a) setAchToast(`${a.emoji} 업적 달성! ${a.name}`);
+      return { ...m, ach: [...(m.ach ?? []), id] };
+    });
+  }, []);
+  useEffect(() => {
+    if (!achToast) return;
+    sfx("levelup");
+    const t = setTimeout(() => setAchToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [achToast]);
+  const gold = run?.gold ?? 0;
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (gold >= 500) unlock("rich"); }, [gold, unlock]);
+  const dexCount = meta.dex.length;
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { if (dexCount >= 20) unlock("dex20"); }, [dexCount, unlock]);
+
+  const difficulty = DIFFICULTY[run?.difficulty ?? "normal"];
+  /** 적 포켓몬 생성: 난이도 배율 + 색이 다른 포켓몬 확률 */
+  function makeFoe(id: number, level: number, boss = false): Mon {
+    const m = makeMon(id, level, boss, true);
+    m.foeMul = difficulty.foe;
+    if (!boss && rnd() < SHINY_RATE) m.shiny = true;
+    m.hp = stats(m).maxHp;
+    return m;
+  }
+
   // ---------- 진행 ----------
   function startRun(starterId: number) {
     const s = makeMon(starterId, 6);
     const r: Run = { party: [s], gold: 100, items: { potion: 3, superPotion: 0, ball: 3, candy: 0, revive: 1 },
-      region: 0, floor: 0, choices: genChoices(0, 0), wins: 0, caught: 0 };
+      region: 0, floor: 0, choices: genChoices(0, 0), wins: 0, caught: 0, difficulty: diff };
     addDex(starterId);
     setRun(r); setScreen("map");
   }
@@ -163,9 +200,9 @@ export default function Game() {
     const reg = REGIONS[run.region];
     if (k === "battle" || k === "elite" || k === "boss") {
       let enemy: Mon;
-      if (k === "boss") enemy = makeMon(reg.boss.id, reg.boss.level, true, true);
-      else if (k === "elite") enemy = makeMon(pick(reg.elite), reg.levels[1] + randInt(1, 2), false, true);
-      else enemy = makeMon(pick(reg.wild), randInt(reg.levels[0], reg.levels[1]), false, true);
+      if (k === "boss") enemy = makeFoe(reg.boss.id, reg.boss.level, true);
+      else if (k === "elite") enemy = makeFoe(pick(reg.elite), reg.levels[1] + randInt(1, 2));
+      else enemy = makeFoe(pick(reg.wild), randInt(reg.levels[0], reg.levels[1]));
       startBattle(k === "battle" ? "wild" : k, enemy);
       return;
     }
@@ -193,8 +230,10 @@ export default function Game() {
       setEventView({ title: "🎁 아이템 발견!", text: `풀숲에서 ${ITEMS[key].name}을(를) 주웠다!`, emoji: ITEMS[key].emoji });
     } else if (r < 0.65) {
       const m = makeMon(pick(reg.wild), reg.levels[0]);
+      if (rnd() < SHINY_RATE * 2) { m.shiny = true; m.hp = stats(m).maxHp; }
       setAfter({ evos: [], recruit: m, next: "map" });
-      setEventView({ title: "🥚 포켓몬 알!", text: `따뜻한 알이 부화했다! ${sp(m).name}이(가) 태어났다!`, img: m.id });
+      setEventView({ title: "🥚 포켓몬 알!", img: monArt(m),
+        text: `따뜻한 알이 부화했다! ${m.shiny ? "✨ 반짝반짝 빛나는 " : ""}${sp(m).name}이(가) 태어났다!` });
     } else if (r < 0.82) {
       const party = clone(run.party);
       const msgs: string[] = [];
@@ -230,6 +269,8 @@ export default function Game() {
     if (a.next === "stay") { setScreen("map"); return; }
     if (a.next === "victory") {
       setMeta(m => ({ ...m, clears: m.clears + 1, bestRegion: REGIONS.length }));
+      unlock("champion");
+      if (run?.difficulty === "hard") setTimeout(() => unlock("hard_clear"), 2800);
       save(SAVE_KEY, null); setHasSave(false); setScreen("victory"); return;
     }
     if (a.next === "region") {
@@ -250,6 +291,8 @@ export default function Game() {
   function doEvolve(to?: number) {
     if (!after) return;
     const uid = after.evos[0];
+    unlock("evolve");
+    if (run?.party.find(p => p.uid === uid)?.id === 133) setTimeout(() => unlock("eevee"), 2800);
     setRun(r => {
       if (!r) return r;
       const party = clone(r.party);
@@ -276,6 +319,8 @@ export default function Game() {
     }
     party.push(m);
     addDex(m.id);
+    if (party.length >= MAX_PARTY) unlock("full_party");
+    if (m.shiny) { unlock("shiny"); setMeta(mt => ({ ...mt, shinies: [...new Set([...(mt.shinies ?? []), m.id])] })); }
     setRun({ ...run, party, caught: run.caught + 1 });
     setToast(`${sp(m).name}이(가) 동료가 되었다! 🎉`); sfx("catch");
     processAfter({ ...after, recruit: null });
@@ -325,12 +370,15 @@ export default function Game() {
     const intro = kind === "boss" ? `👑 ${REGIONS[run.region].name}의 주인 ${sp(enemy).name}이(가) 나타났다!`
       : kind === "elite" ? `💀 강해 보이는 ${sp(enemy).name}이(가) 앞을 막아섰다!`
       : `야생의 ${sp(enemy).name}이(가) 튀어나왔다!`;
+    const shinyIntro = enemy.shiny ? `✨ 반짝반짝! 색이 다른 ${sp(enemy).name}이다! (이기면 꼭 동료가 돼요)` : null;
     b.events = [
       { text: intro, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp },
+      ...(shinyIntro ? [{ text: shinyIntro, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp }] : []),
       { text: `가라, ${sp(b.pf.mon).name}!`, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp },
     ];
     b.outcome = undefined;
     setScreen("battle");
+    if (enemy.shiny) sfx("catch");
     play();
   }
 
@@ -452,9 +500,12 @@ export default function Game() {
       msgs.push(`${sp(m).name}은(는) 경험치 ${amt}을(를) 얻었다.`);
       msgs.push(...giveXp(m, amt));
     });
-    b.gold = Math.floor(e.level * 5 * (b.kind === "boss" ? 5 : b.kind === "elite" ? 2 : 1));
+    b.gold = Math.floor(e.level * 5 * (b.kind === "boss" ? 5 : b.kind === "elite" ? 2 : 1) * difficulty.gold);
     msgs.push(`💰 ${b.gold}G를 얻었다!`);
-    msgs.push("💚 승리 보너스: 파티의 HP가 조금 회복된다.");
+    msgs.push(`💚 승리 보너스: 파티의 HP가 ${Math.round(difficulty.heal * 100)}% 회복된다.`);
+    unlock("first_win");
+    if (b.caught) unlock("catch");
+    if (b.kind === "boss") unlock(`boss_${e.id}`);
     if (b.kind === "elite" || b.kind === "boss") {
       b.dropItem = pick<ItemKey>(["superPotion", "candy", "revive", "ball"]);
       msgs.push(`${ITEMS[b.dropItem].emoji} ${ITEMS[b.dropItem].name}을(를) 얻었다!`);
@@ -466,13 +517,14 @@ export default function Game() {
 
   function leaveBattle() {
     const b = bRef.current; if (!b || !run) return;
-    const party = b.party.map(m => { const mx = stats(m).maxHp; return { ...m, status: undefined, hp: m.hp > 0 ? Math.min(mx, m.hp + Math.ceil(mx * 0.2)) : 0 }; });
+    const party = b.party.map(m => { const mx = stats(m).maxHp; return { ...m, status: undefined, hp: m.hp > 0 ? Math.min(mx, m.hp + Math.ceil(mx * difficulty.heal)) : 0 }; });
     const items = { ...b.items }; if (b.dropItem) items[b.dropItem]++;
     let recruit: Mon | null = null;
     const e = b.ef.mon;
-    if (b.caught) recruit = { ...e, xp: 0, status: undefined, foe: false };
-    else if (b.kind !== "boss" && rnd() < (b.kind === "elite" ? 0.5 : 0.35)) {
-      recruit = makeMon(e.id, e.level); recruit.hp = Math.ceil(stats(recruit).maxHp * 0.6);
+    if (b.caught) recruit = { ...e, xp: 0, status: undefined, foe: false, foeMul: undefined };
+    else if (b.kind !== "boss" && (e.shiny || rnd() < (b.kind === "elite" ? 0.5 : 0.35))) {
+      recruit = makeMon(e.id, e.level); recruit.shiny = e.shiny;
+      recruit.hp = Math.ceil(stats(recruit).maxHp * 0.6);
     }
     const evos = party.filter(canEvolve).map(m => m.uid);
     const lastRegion = run.region === REGIONS.length - 1;
@@ -496,12 +548,32 @@ export default function Game() {
   return (
     <div className="game" style={{ ["--region-bg" as string]: region.bg }}>
       {toast && <div className="toast">{toast}</div>}
+      {achToast && <div className="toast ach">{achToast}</div>}
       <div className="toolbar">
         <button title="타입 상성표" onClick={() => setHelpOpen(true)}>📊 상성표</button>
         <button title={mute ? "소리 켜기" : "소리 끄기"} onClick={() => { setMuted(!mute); setMute(!mute); if (mute) sfx("click"); }}>
           {mute ? "🔇" : "🔊"}
         </button>
       </div>
+      {achOpen && (
+        <div className="modal-bg" onClick={() => setAchOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <h2>🏅 업적 {meta.ach?.length ?? 0} / {ACHIEVEMENTS.length}</h2>
+            <div className="achlist">
+              {ACHIEVEMENTS.map(a => {
+                const got = meta.ach?.includes(a.id);
+                return (
+                  <div key={a.id} className={`ach-item ${got ? "got" : ""}`}>
+                    <span className="ach-emoji">{got ? a.emoji : "🔒"}</span>
+                    <div><b>{a.name}</b><br /><small className="muted">{a.desc}</small></div>
+                  </div>
+                );
+              })}
+            </div>
+            <button className="primary" onClick={() => setAchOpen(false)}>닫기</button>
+          </div>
+        </div>
+      )}
       {helpOpen && (
         <div className="modal-bg" onClick={() => setHelpOpen(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -541,7 +613,9 @@ export default function Game() {
             <span>📖 도감 {meta.dex.length} / {Object.keys(SPECIES).length}</span>
             <span>🏆 클리어 {meta.clears}회</span>
             <span>🗺️ 최고 도달 {meta.bestRegion >= REGIONS.length ? "정복!" : `${meta.bestRegion + 1}지역`}</span>
+            <span>🌟 색이 다른 포켓몬 {meta.shinies?.length ?? 0}종</span>
           </div>
+          <button onClick={() => setAchOpen(true)}>🏅 업적 {meta.ach?.length ?? 0} / {ACHIEVEMENTS.length}</button>
           <div className="dexstrip">
             {Object.values(SPECIES).map(s => (
               <img key={s.id} src={art(s.id)} alt={s.name} title={meta.dex.includes(s.id) ? s.name : "???"}
@@ -554,6 +628,14 @@ export default function Game() {
 
       {screen === "starter" && (
         <div className="panel center">
+          <h3>난이도</h3>
+          <div className="difficulty">
+            {(Object.keys(DIFFICULTY) as Difficulty[]).map(d => (
+              <button key={d} className={diff === d ? "on" : ""} onClick={() => setDiff(d)}>
+                <b>{DIFFICULTY[d].emoji} {DIFFICULTY[d].name}</b><small>{DIFFICULTY[d].desc}</small>
+              </button>
+            ))}
+          </div>
           <h2>함께 모험할 파트너를 골라주세요!</h2>
           <div className="starters">
             {STARTERS.map(id => {
@@ -578,7 +660,7 @@ export default function Game() {
         <div className="panel">
           <div className="regionhead">
             <div>
-              <div className="muted small">{run.region + 1} / {REGIONS.length} 지역</div>
+              <div className="muted small">{run.region + 1} / {REGIONS.length} 지역 · {difficulty.emoji} {difficulty.name}</div>
               <h2>{region.emoji} {region.name}</h2>
             </div>
             <div className="goldbox">💰 {run.gold}G</div>
@@ -631,7 +713,7 @@ export default function Game() {
       {screen === "event" && eventView && (
         <div className="panel center">
           <h2>{eventView.title}</h2>
-          {eventView.img ? <img className="bigart pop" src={art(eventView.img)} alt="" /> : <div className="bigemoji pop">{eventView.emoji}</div>}
+          {eventView.img ? <img className="bigart pop" src={eventView.img} alt="" /> : <div className="bigemoji pop">{eventView.emoji}</div>}
           <p className="pre">{eventView.text}</p>
           <button className="primary" onClick={eventDone}>계속 →</button>
         </div>
@@ -639,8 +721,8 @@ export default function Game() {
 
       {run && screen === "recruit" && after?.recruit && (
         <div className="panel center">
-          <h2>✨ {sp(after.recruit).name}이(가) 동료가 되고 싶어 한다!</h2>
-          <img className="bigart pop" src={art(after.recruit.id)} alt="" />
+          <h2>{after.recruit.shiny ? "🌟 색이 다른 " : "✨ "}{sp(after.recruit).name}이(가) 동료가 되고 싶어 한다!</h2>
+          <img className={`bigart pop ${after.recruit.shiny ? "shiny-glow" : ""}`} src={monArt(after.recruit)} alt="" />
           <p><TypeBadge t={sp(after.recruit).type} /> Lv.{after.recruit.level}
             {sp(after.recruit).evo && <span className="muted small"> · Lv.{sp(after.recruit).evo!.level}에 진화</span>}</p>
           {!swapFor ? (
@@ -668,14 +750,14 @@ export default function Game() {
           <div className="panel center evolve">
             {evoStage === 0 && <>
               <h2>어라…!? {fromName}의 상태가…!</h2>
-              <img className="bigart evo-glow" src={art(m.id)} alt="" />
+              <img className="bigart evo-glow" src={monArt(m)} alt="" />
               {sp(m).evo?.choices ? <>
                 <p>어떤 모습으로 진화할까? 하나를 골라주세요!</p>
                 <div className="evochoices">
                   {sp(m).evo!.choices!.map(id => (
                     <button key={id} onClick={() => { sfx("evolve"); setEvoStage(1); setTimeout(() => doEvolve(id), 2200); }}
                       style={{ ["--tc" as string]: TYPE_COLOR[SPECIES[id].type] }}>
-                      <img src={art(id)} alt="" />
+                      <img src={art(id, !!m.shiny)} alt="" />
                       <b>{SPECIES[id].name}</b> <TypeBadge t={SPECIES[id].type} />
                     </button>
                   ))}
@@ -684,11 +766,11 @@ export default function Game() {
             </>}
             {evoStage === 1 && <>
               <h2>…!</h2>
-              <img className="bigart evo-flash" src={art(m.id)} alt="" />
+              <img className="bigart evo-flash" src={monArt(m)} alt="" />
             </>}
             {evoStage === 2 && <>
               <h2>🎉 축하합니다! {sp(m).name}(으)로 진화했다!</h2>
-              <img className="bigart pop" src={art(m.id)} alt="" />
+              <img className="bigart pop" src={monArt(m)} alt="" />
               <p><TypeBadge t={sp(m).type} /> Lv.{m.level}</p>
               <button className="primary" onClick={evolveNext}>계속 →</button>
             </>}
@@ -716,7 +798,7 @@ export default function Game() {
         <div className="panel center victory">
           <h1>🏆 전 지역 정복!</h1>
           <p>최후의 탑의 주인을 쓰러뜨렸다! 당신과 파트너들은 진정한 챔피언이다!</p>
-          <div className="victory-mons">{run.party.map(m => <img key={m.uid} src={art(m.id)} alt="" />)}</div>
+          <div className="victory-mons">{run.party.map(m => <img key={m.uid} src={monArt(m)} alt="" />)}</div>
           <p className="muted">승리 {run.wins}회 · 동료 {run.caught}마리 영입</p>
           <button className="primary" onClick={() => { setRun(null); setScreen("title"); }}>타이틀로</button>
         </div>
@@ -769,11 +851,11 @@ function BattleView({ b, region, onAct, onForce, onSkip, onLeave, onLose }: {
       <div className="field">
         <div className={`side player ${ev?.hit === "p" && anim ? "hit" : ""} ${pHp <= 0 ? "down" : ""}`} key={`p-${hitKey}`}>
           <div className="namecard">
-            <b>{sp(pm).name}</b> <small>Lv.{pm.level}</small> <TypeBadge t={sp(pm).type} />
+            {pm.shiny && "✨"}<b>{sp(pm).name}</b> <small>Lv.{pm.level}</small> <TypeBadge t={sp(pm).type} />
             {pm.status === "burn" && " 🔥"}{pm.status === "paralyze" && " ⚡"}
             <HpBar hp={pHp} max={stats(pm).maxHp} />
           </div>
-          <img className="fighter flip" src={art(pm.id)} alt={sp(pm).name} />
+          <img className="fighter flip" src={monArt(pm)} alt={sp(pm).name} />
           {anim && ev?.dmg?.side === "p" && <div className="float" style={{ color: ev.dmg.color }}>{ev.dmg.text}</div>}
         </div>
         <div className="vs">VS</div>
@@ -781,11 +863,12 @@ function BattleView({ b, region, onAct, onForce, onSkip, onLeave, onLose }: {
           <div className="namecard">
             {b.kind === "boss" && <span className="bosstag">👑 BOSS</span>}
             {b.kind === "elite" && <span className="bosstag elite">💀 강적</span>}
+            {em.shiny && <span className="bosstag shinytag">✨ 색이 다름</span>}
             <b>{sp(em).name}</b> <small>Lv.{em.level}</small> <TypeBadge t={sp(em).type} />
             {em.status === "burn" && " 🔥"}{em.status === "paralyze" && " ⚡"}
             <HpBar hp={eHp} max={stats(em).maxHp} />
           </div>
-          {caughtView ? <div className="pokeball shake">🔴</div> : <img className="fighter" src={art(em.id)} alt={sp(em).name} />}
+          {caughtView ? <div className="pokeball shake">🔴</div> : <img className={`fighter ${em.shiny ? "shiny-glow" : ""}`} src={monArt(em)} alt={sp(em).name} />}
           {anim && ev?.dmg?.side === "e" && <div className="float" style={{ color: ev.dmg.color }}>{ev.dmg.text}</div>}
         </div>
       </div>

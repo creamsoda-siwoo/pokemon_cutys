@@ -186,3 +186,20 @@ h3 { font-size: 1rem; }
   background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 18%, var(--card)), var(--card)); }
 .evochoices img { width: 80px; height: 80px; object-fit: contain; }
 .typechart .badge { white-space: nowrap; font-size: .62rem; padding: 1px 5px; }
+
+/* 색이 다른 포켓몬 · 업적 · 난이도 */
+.fighter.shiny-glow, .bigart.shiny-glow { animation: bob 2.2s ease-in-out infinite, shimmer 1.4s ease-in-out infinite; }
+@keyframes shimmer {
+  0%, 100% { filter: drop-shadow(0 0 10px #fde047) drop-shadow(0 10px 8px #0004); }
+  50% { filter: drop-shadow(0 0 26px #facc15) drop-shadow(0 0 8px #fff) brightness(1.12); }
+}
+.shinytag { background: linear-gradient(90deg, #f59e0b, #ec4899) !important; }
+.toast.ach { top: auto; bottom: 20px; background: linear-gradient(90deg, #f59e0b, #ef4444); }
+.achlist { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+.ach-item { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; opacity: .55; }
+.ach-item.got { opacity: 1; border-color: var(--accent2); background: color-mix(in srgb, var(--accent2) 10%, var(--card)); }
+.ach-emoji { font-size: 1.6rem; }
+.difficulty { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.difficulty button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; }
+.difficulty button small { color: var(--muted); font-weight: 400; font-size: .75rem; }
+.difficulty button.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }

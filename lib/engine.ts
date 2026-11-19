@@ -1,10 +1,15 @@
-import { SPECIES, MOVES, Move, effectiveness, movesFor, Species } from "./data";
+import { SPECIES, MOVES, Move, effectiveness, movesFor, Species, art } from "./data";
 
 export interface Mon {
   uid: string; id: number; level: number; xp: number; hp: number;
   status?: "burn" | "paralyze";
   boss?: boolean; foe?: boolean;
+  shiny?: boolean;
+  /** 난이도에 따른 적 능력치 배율 */
+  foeMul?: number;
 }
+
+export const monArt = (m: Mon) => art(m.id, !!m.shiny);
 
 export const rnd = () => Math.random();
 export const rand = (a: number, b: number) => a + Math.random() * (b - a);
@@ -16,11 +21,13 @@ export const sp = (m: Mon): Species => SPECIES[m.id];
 export function stats(m: Mon) {
   const s = sp(m), L = m.level;
   const hp = Math.floor(s.hp * L / 40) + L * 2 + 15;
+  const sh = m.shiny ? 1.1 : 1; // 색이 다른 포켓몬은 능력치 10% 보너스
+  const fm = m.foe ? (m.foeMul ?? 1) : 1;
   return {
-    maxHp: m.boss ? Math.floor(hp * 1.2) : hp,
-    atk: Math.floor((s.atk * (0.5 + L * 0.07) + 5) * (m.foe ? 0.85 : 1)),
-    def: Math.floor((s.def * (0.5 + L * 0.07) + 5) * (m.foe ? 0.9 : 1)),
-    spd: Math.floor(s.spd * (0.5 + L * 0.07)) + 5,
+    maxHp: Math.floor((m.boss ? hp * 1.2 : hp) * sh),
+    atk: Math.floor((s.atk * (0.5 + L * 0.07) + 5) * (m.foe ? 0.85 : 1) * sh * fm),
+    def: Math.floor((s.def * (0.5 + L * 0.07) + 5) * (m.foe ? 0.9 : 1) * sh * Math.sqrt(fm)),
+    spd: Math.floor((s.spd * (0.5 + L * 0.07) + 5) * sh),
   };
 }
 
