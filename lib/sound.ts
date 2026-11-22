@@ -51,3 +51,16 @@ export function sfx(name: Sfx) {
     case "lose": seq([392, 349, 330, 262], 0.22, 0.25, "triangle"); break;
   }
 }
+
+// ---------- 포켓몬 울음소리 (PokeAPI cries) ----------
+let lastCry: HTMLAudioElement | null = null;
+export function cry(id: number) {
+  if (muted || typeof window === "undefined") return;
+  try {
+    lastCry?.pause();
+    const a = new Audio(`https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/${id}.ogg`);
+    a.volume = 0.3;
+    lastCry = a;
+    void a.play().catch(() => {});
+  } catch {}
+}

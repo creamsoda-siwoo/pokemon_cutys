@@ -3,14 +3,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ACHIEVEMENTS, art, DIFFICULTY, Difficulty, effectiveness, FLOORS_PER_REGION, ItemKey, ITEMS, REGIONS, SHINY_RATE,
+  ACHIEVEMENTS, art, DIFFICULTY, Difficulty, effectiveness, endlessStage, evoLine, FLOORS_PER_REGION, getRegion, isEndless,
+  ItemKey, ITEMS, MOVES, REGIONS, SHINY_RATE,
   SPECIES, STARTERS, TYPE_COLOR, Type,
 } from "@/lib/data";
 import {
   canEvolve, catchChance, effectiveSpeed, enemyChoose, evolve, Fighter, giveXp, levelUp, makeMon, Mon,
   monArt, monMoves, performMove, pick, randInt, rnd, sp, stats, xpNeeded, xpReward,
 } from "@/lib/engine";
-import { loadMuted, setMuted, sfx } from "@/lib/sound";
+import { cry, loadMuted, setMuted, sfx } from "@/lib/sound";
 
 function evSound(ev?: { text: string; hit?: string; dmg?: { color: string; text: string }; ball?: boolean }) {
   if (!ev) return;
@@ -30,7 +31,7 @@ interface Run {
   region: number; floor: number; choices: NodeKind[]; wins: number; caught: number;
   difficulty?: Difficulty;
 }
-interface Meta { dex: number[]; bestRegion: number; clears: number; ach?: string[]; shinies?: number[] }
+interface Meta { dex: number[]; bestRegion: number; clears: number; ach?: string[]; shinies?: number[]; bestEndless?: number }
 interface After { evos: string[]; recruit: Mon | null; next: "map" | "region" | "victory" | "stay" }
 
 interface Ev {
@@ -64,7 +65,7 @@ const save = (k: string, v: unknown) => { try { if (v === null) localStorage.rem
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function genChoices(region: number, floor: number): NodeKind[] {
-  if (floor >= FLOORS_PER_REGION - 1 || REGIONS[region].wild.length === 0) return ["boss"];
+  if (floor >= FLOORS_PER_REGION - 1 || getRegion(region).wild.length === 0) return ["boss"];
   const weights: [NodeKind, number][] = [["battle", 45], ["elite", floor >= 1 ? 16 : 0], ["camp", 12], ["shop", 12], ["event", 15]];
   const roll = () => {
     let r = rnd() * weights.reduce((a, [, w]) => a + w, 0);
@@ -125,6 +126,7 @@ export default function Game() {
   const [achOpen, setAchOpen] = useState(false);
   const [achToast, setAchToast] = useState<string | null>(null);
   const [diff, setDiff] = useState<Difficulty>("normal");
+  const [detail, setDetail] = useState<Mon | null>(null);
 
   const bRef = useRef<Battle | null>(null);
   const [battleView, setBattleView] = useState<Battle | null>(null);
@@ -197,7 +199,7 @@ export default function Game() {
 
   function chooseNode(k: NodeKind) {
     if (!run) return;
-    const reg = REGIONS[run.region];
+    const reg = getRegion(run.region);
     if (k === "battle" || k === "elite" || k === "boss") {
       let enemy: Mon;
       if (k === "boss") enemy = makeFoe(reg.boss.id, reg.boss.level, true);
@@ -218,7 +220,7 @@ export default function Game() {
 
   function doEvent() {
     if (!run) return;
-    const reg = REGIONS[run.region];
+    const reg = getRegion(run.region);
     const r = rnd();
     if (r < 0.25) {
       const g = randInt(40, 90) + run.region * 20;
@@ -264,7 +266,7 @@ export default function Game() {
 
   function processAfter(a: After) {
     if (a.evos.length) { setAfter(a); setEvoStage(0); setScreen("evolve"); return; }
-    if (a.recruit) { setAfter(a); setSwapFor(false); setScreen("recruit"); return; }
+    if (a.recruit) { setAfter(a); setSwapFor(false); setScreen("recruit"); cry(a.recruit.id); return; }
     setAfter(null);
     if (a.next === "stay") { setScreen("map"); return; }
     if (a.next === "victory") {
@@ -277,11 +279,16 @@ export default function Game() {
       setRun(r => {
         if (!r) return r;
         const region = r.region + 1;
-        setMeta(m => ({ ...m, bestRegion: Math.max(m.bestRegion, region) }));
+        setMeta(m => ({ ...m, bestRegion: Math.max(m.bestRegion, Math.min(region, REGIONS.length)),
+          bestEndless: isEndless(r.region) ? Math.max(m.bestEndless ?? 0, endlessStage(r.region)) : m.bestEndless }));
+        if (isEndless(r.region)) {
+          const cleared = endlessStage(r.region);
+          setTimeout(() => { unlock("endless_1"); if (cleared >= 5) unlock("endless_5"); }, 0);
+        }
         return { ...r, region, floor: 0, choices: genChoices(region, 0),
           party: r.party.map(m => ({ ...m, hp: stats(m).maxHp, status: undefined })) };
       });
-      setToast("지역 클리어! 파티가 모두 회복되었다 ✨");
+      setToast(run && isEndless(run.region) ? "♾️ 구역 돌파! 다음 구역은 더 강해요. 파티 회복 ✨" : "지역 클리어! 파티가 모두 회복되었다 ✨");
       setScreen("map"); return;
     }
     setRun(r => r && advance(r)); setScreen("map");
@@ -301,6 +308,9 @@ export default function Game() {
       return { ...r, party };
     });
     sfx("fanfare");
+    const cur = run?.party.find(p => p.uid === uid);
+    const e = cur && sp(cur).evo;
+    if (e) setTimeout(() => cry(to && e.choices?.includes(to) ? to : e.to), 900);
     setEvoStage(2);
   }
   function evolveNext() {
@@ -351,6 +361,15 @@ export default function Game() {
     if (msgs.length) setToast(msgs[0]);
     if (canEvolve(m)) { setPartyOpen(false); processAfter({ evos: [m.uid], recruit: null, next: "stay" }); }
   }
+  function startEndless() {
+    if (!run) return;
+    const region = REGIONS.length;
+    setRun({ ...run, region, floor: 0, choices: genChoices(region, 0),
+      party: run.party.map(m => ({ ...m, hp: stats(m).maxHp, status: undefined })) });
+    setHasSave(true);
+    setToast("♾️ 무한의 탑에 도전! 몇 구역까지 갈 수 있을까?");
+    setScreen("map");
+  }
   function setLead(idx: number) {
     if (!run) return;
     const party = [...run.party]; const [m] = party.splice(idx, 1); party.unshift(m);
@@ -367,7 +386,7 @@ export default function Game() {
       items: { ...run.items }, events: [], evIdx: 0, phase: "anim", result: [], gold: 0,
     };
     bRef.current = b;
-    const intro = kind === "boss" ? `👑 ${REGIONS[run.region].name}의 주인 ${sp(enemy).name}이(가) 나타났다!`
+    const intro = kind === "boss" ? `👑 ${getRegion(run.region).name}의 주인 ${sp(enemy).name}이(가) 나타났다!`
       : kind === "elite" ? `💀 강해 보이는 ${sp(enemy).name}이(가) 앞을 막아섰다!`
       : `야생의 ${sp(enemy).name}이(가) 튀어나왔다!`;
     const shinyIntro = enemy.shiny ? `✨ 반짝반짝! 색이 다른 ${sp(enemy).name}이다! (이기면 꼭 동료가 돼요)` : null;
@@ -379,6 +398,7 @@ export default function Game() {
     b.outcome = undefined;
     setScreen("battle");
     if (enemy.shiny) sfx("catch");
+    cry(enemy.id);
     play();
   }
 
@@ -505,7 +525,7 @@ export default function Game() {
     msgs.push(`💚 승리 보너스: 파티의 HP가 ${Math.round(difficulty.heal * 100)}% 회복된다.`);
     unlock("first_win");
     if (b.caught) unlock("catch");
-    if (b.kind === "boss") unlock(`boss_${e.id}`);
+    if (b.kind === "boss" && !isEndless(run.region)) unlock(`boss_${e.id}`);
     if (b.kind === "elite" || b.kind === "boss") {
       b.dropItem = pick<ItemKey>(["superPotion", "candy", "revive", "ball"]);
       msgs.push(`${ITEMS[b.dropItem].emoji} ${ITEMS[b.dropItem].name}을(를) 얻었다!`);
@@ -537,13 +557,13 @@ export default function Game() {
     const b = bRef.current;
     if (b && run) setRun({ ...run, party: b.party });
     bRef.current = null;
-    if (run) setMeta(m => ({ ...m, bestRegion: Math.max(m.bestRegion, run.region) }));
+    if (run) setMeta(m => ({ ...m, bestRegion: Math.max(m.bestRegion, Math.min(run.region, REGIONS.length)) }));
     save(SAVE_KEY, null); setHasSave(false);
     setScreen("gameover");
   }
 
   // ================== 렌더 ==================
-  const region = run ? REGIONS[run.region] : REGIONS[0];
+  const region = getRegion(run?.region ?? 0);
 
   return (
     <div className="game" style={{ ["--region-bg" as string]: region.bg }}>
@@ -614,6 +634,7 @@ export default function Game() {
             <span>🏆 클리어 {meta.clears}회</span>
             <span>🗺️ 최고 도달 {meta.bestRegion >= REGIONS.length ? "정복!" : `${meta.bestRegion + 1}지역`}</span>
             <span>🌟 색이 다른 포켓몬 {meta.shinies?.length ?? 0}종</span>
+            {(meta.bestEndless ?? 0) > 0 && <span>♾️ 무한의 탑 최고 {meta.bestEndless}구역</span>}
           </div>
           <button onClick={() => setAchOpen(true)}>🏅 업적 {meta.ach?.length ?? 0} / {ACHIEVEMENTS.length}</button>
           <div className="dexstrip">
@@ -660,7 +681,7 @@ export default function Game() {
         <div className="panel">
           <div className="regionhead">
             <div>
-              <div className="muted small">{run.region + 1} / {REGIONS.length} 지역 · {difficulty.emoji} {difficulty.name}</div>
+              <div className="muted small">{isEndless(run.region) ? "♾️ 무한의 탑" : `${run.region + 1} / ${REGIONS.length} 지역`} · {difficulty.emoji} {difficulty.name}</div>
               <h2>{region.emoji} {region.name}</h2>
             </div>
             <div className="goldbox">💰 {run.gold}G</div>
@@ -684,11 +705,11 @@ export default function Game() {
             ))}
           </div>
           <div className="partyrow">
-            <h3>내 파티 <small className="muted">({run.party.length}/{MAX_PARTY})</small></h3>
+            <h3>내 파티 <small className="muted">({run.party.length}/{MAX_PARTY}) · 눌러서 정보 보기</small></h3>
             <button onClick={() => setPartyOpen(true)}>🎒 파티 · 가방</button>
           </div>
           <div className="partylist">
-            {run.party.map((m, i) => <MonMini key={m.uid} m={m} active={i === 0} />)}
+            {run.party.map((m, i) => <MonMini key={m.uid} m={m} active={i === 0} onClick={() => { setDetail(m); cry(m.id); }} />)}
           </div>
         </div>
       )}
@@ -785,7 +806,8 @@ export default function Game() {
       {screen === "gameover" && run && (
         <div className="panel center">
           <h2>💫 모험 실패…</h2>
-          <p>{REGIONS[run.region].name}에서 쓰러지고 말았다.</p>
+          <p>{getRegion(run.region).name}에서 쓰러지고 말았다.</p>
+          {isEndless(run.region) && <p>♾️ 무한의 탑 <b>{endlessStage(run.region) - 1}구역</b> 돌파! 대단해요!</p>}
           <p className="muted">승리 {run.wins}회 · 동료 {run.caught}마리 영입</p>
           <div className="partylist">{run.party.map(m => <MonMini key={m.uid} m={m} />)}</div>
           <p className="muted small">도감 기록은 남아 있어요. 다시 도전해 보세요!</p>
@@ -800,9 +822,15 @@ export default function Game() {
           <p>최후의 탑의 주인을 쓰러뜨렸다! 당신과 파트너들은 진정한 챔피언이다!</p>
           <div className="victory-mons">{run.party.map(m => <img key={m.uid} src={monArt(m)} alt="" />)}</div>
           <p className="muted">승리 {run.wins}회 · 동료 {run.caught}마리 영입</p>
-          <button className="primary" onClick={() => { setRun(null); setScreen("title"); }}>타이틀로</button>
+          <div className="btns">
+            <button className="primary" onClick={startEndless}>♾️ 무한의 탑 도전</button>
+            <button onClick={() => { setRun(null); setScreen("title"); }}>타이틀로</button>
+          </div>
+          <p className="muted small">무한의 탑: 지금 파티 그대로 계속! 구역마다 적이 강해져요.</p>
         </div>
       )}
+
+      {detail && <DetailCard m={detail} onClose={() => setDetail(null)} />}
 
       {partyOpen && run && (
         <div className="modal-bg" onClick={() => setPartyOpen(false)}>
@@ -815,6 +843,7 @@ export default function Game() {
               <MonMini key={m.uid} m={m} active={i === 0} extra={
                 <div className="mm-actions">
                   <div className="movechips">{monMoves(m).map(mv => <span key={mv.name} style={{ borderColor: TYPE_COLOR[mv.type] }}>{mv.name}</span>)}</div>
+                  <button onClick={() => { setDetail(m); cry(m.id); }}>📋 정보</button>
                   {i > 0 && <button onClick={() => setLead(i)}>⭐ 선두로</button>}
                   {(["potion", "superPotion", "revive", "candy"] as ItemKey[]).filter(k => run.items[k] > 0).map(k =>
                     <button key={k} onClick={() => applyItemOutside(k, i)}>{ITEMS[k].emoji} {ITEMS[k].name}</button>)}
@@ -825,6 +854,73 @@ export default function Game() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ================== 포켓몬 정보 카드 ==================
+const STAT_LABEL: [keyof ReturnType<typeof stats>, string, number][] = [
+  ["maxHp", "HP", 120], ["atk", "공격", 110], ["def", "방어", 110], ["spd", "스피드", 110],
+];
+/** 같은 레벨에서 종족값이 아주 높은 포켓몬의 능력치 (막대 길이 기준) */
+const statCap = (k: string, L: number, base: number) =>
+  k === "maxHp" ? Math.floor(base * 1.3 * L / 40) + L * 2 + 15 : Math.floor(base * 1.2 * (0.5 + L * 0.07)) + 5;
+function DetailCard({ m, onClose }: { m: Mon; onClose: () => void }) {
+  const s = sp(m), st = stats(m);
+  const line = evoLine(m.id);
+  const learnNext = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(d => m.level + d)
+    .map(L => ({ L, moves: monMoves({ ...m, level: L }).map(x => x.name) }))
+    .find(x => x.moves.some(n => !monMoves(m).some(y => y.name === n)));
+  const nextMove = learnNext?.moves.find(n => !monMoves(m).some(y => y.name === n));
+  return (
+    <div className="modal-bg" onClick={onClose}>
+      <div className="modal detail" onClick={e => e.stopPropagation()} style={{ ["--tc" as string]: TYPE_COLOR[s.type] }}>
+        <div className="detail-head">
+          <img className={m.shiny ? "shiny-glow" : ""} src={monArt(m)} alt={s.name} />
+          <div>
+            <h2>{m.shiny && "✨"}{s.name}</h2>
+            <p><TypeBadge t={s.type} /> Lv.{m.level} <span className="muted small">· No.{String(s.id).padStart(3, "0")}</span></p>
+            <p className="muted small">경험치 {m.xp} / {xpNeeded(m.level)}</p>
+            {s.evo && <p className="small">⭐ {s.evo.choices ? "Lv." + s.evo.level + "에 5가지 중 선택 진화" : `Lv.${s.evo.level}에 ${SPECIES[s.evo.to].name}(으)로 진화`}</p>}
+          </div>
+        </div>
+        <h3>능력치</h3>
+        <div className="statlist">
+          {STAT_LABEL.map(([k, label, max]) => (
+            <div key={k} className="statrow">
+              <span>{label}</span><b>{st[k]}</b>
+              <div className="statbar"><div style={{ width: `${Math.min(100, Math.round(st[k] / statCap(k, m.level, max) * 100))}%` }} /></div>
+            </div>
+          ))}
+        </div>
+        <h3>기술</h3>
+        <div className="movelist">
+          {monMoves(m).map(mv => (
+            <div key={mv.name} className="moveinfo" style={{ ["--tc" as string]: TYPE_COLOR[mv.type] }}>
+              <b>{mv.name}</b> <TypeBadge t={mv.type} />
+              <small>{mv.power ? `위력 ${mv.power} · 명중 ${mv.acc}` : ""}{mv.desc ? ` ${mv.desc}` : ""}</small>
+            </div>
+          ))}
+        </div>
+        {learnNext && nextMove && <p className="muted small">📚 Lv.{learnNext.L}에 <b>{nextMove}</b>({MOVES[nextMove].type}) 배움</p>}
+        <h3>진화 단계</h3>
+        <div className="evoline">
+          {line.map((stage, i) => (
+            <div key={i} className="evostage-wrap">
+              {i > 0 && <span className="evoarrow">→</span>}
+              <div className="evostage">
+                {stage.map(id => (
+                  <div key={id} className={`evomon ${id === m.id ? "cur" : ""}`}>
+                    <img src={art(id, !!m.shiny)} alt="" />
+                    <small>{SPECIES[id].name}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <button className="primary" onClick={onClose}>닫기</button>
+      </div>
     </div>
   );
 }

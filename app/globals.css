@@ -203,3 +203,28 @@ h3 { font-size: 1rem; }
 .difficulty button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; }
 .difficulty button small { color: var(--muted); font-weight: 400; font-size: .75rem; }
 .difficulty button.on { border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+
+/* 포켓몬 정보 카드 */
+.detail { gap: 6px; }
+.detail h3 { margin: 8px 0 2px; }
+.detail-head { display: flex; gap: 14px; align-items: center; padding: 10px; border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 25%, var(--card)), var(--card)); }
+.detail-head img { width: 130px; height: 130px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 6px 8px #0003); }
+.detail-head h2 { margin: 0; }
+.detail-head p { margin: 3px 0; }
+.statlist { display: grid; gap: 4px; }
+.statrow { display: grid; grid-template-columns: 56px 40px 1fr; align-items: center; gap: 8px; font-size: .88rem; }
+.statrow b { text-align: right; font-variant-numeric: tabular-nums; }
+.statbar { height: 8px; background: #0000001a; border-radius: 99px; overflow: hidden; }
+.statbar div { height: 100%; background: var(--tc); border-radius: 99px; }
+.movelist { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.moveinfo { border: 1.5px solid var(--tc); border-radius: 10px; padding: 6px 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.moveinfo small { width: 100%; color: var(--muted); }
+.evoline { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; }
+.evostage-wrap { display: flex; align-items: center; gap: 4px; }
+.evostage { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.evoarrow { font-weight: 800; color: var(--muted); }
+.evomon { display: flex; flex-direction: column; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 4px; width: 72px; font-size: .72rem; }
+.evomon img { width: 56px; height: 56px; object-fit: contain; }
+.evomon.cur { border: 2px solid var(--tc); background: color-mix(in srgb, var(--tc) 12%, var(--card)); font-weight: 700; }
+@media (max-width: 560px) { .movelist { grid-template-columns: 1fr; } .detail-head img { width: 96px; height: 96px; } }

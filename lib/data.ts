@@ -150,6 +150,8 @@ export const ACHIEVEMENTS: { id: string; emoji: string; name: string; desc: stri
   { id: "boss_149", emoji: "🐉", name: "화산의 주인", desc: "망나뇽 쓰러뜨리기" },
   { id: "champion", emoji: "🏆", name: "챔피언", desc: "최후의 탑의 뮤츠 쓰러뜨리기" },
   { id: "hard_clear", emoji: "🔥", name: "진정한 챔피언", desc: "어려움 난이도로 클리어" },
+  { id: "endless_1", emoji: "♾️", name: "끝없는 도전", desc: "무한의 탑 1구역 돌파" },
+  { id: "endless_5", emoji: "🌌", name: "탑의 전설", desc: "무한의 탑 5구역 돌파" },
 ];
 
 export interface Region {
@@ -169,6 +171,39 @@ export const REGIONS: Region[] = [
     wild: [], elite: [], boss: { id: 150, level: 21 } },
 ];
 export const FLOORS_PER_REGION = 6; // 마지막 층은 보스
+
+// ---------- 무한의 탑 (클리어 후 도전) ----------
+const ENDLESS_POOL = [18, 20, 45, 55, 61, 80, 101, 134, 135, 136, 196, 197, 59, 38, 68, 65, 93, 148, 26, 3, 6, 9];
+const ENDLESS_BOSSES = [143, 130, 94, 149, 6, 9, 3, 65, 68, 150];
+export const isEndless = (idx: number) => idx >= REGIONS.length;
+export const endlessStage = (idx: number) => idx - REGIONS.length + 1;
+export function getRegion(idx: number): Region {
+  if (!isEndless(idx)) return REGIONS[idx];
+  const t = endlessStage(idx);
+  const base = 20 + t * 3;
+  return {
+    name: `무한의 탑 ${t}구역`, emoji: "♾️", bg: "linear-gradient(#f5d0fe,#312e81)", levels: [base, base + 2],
+    wild: ENDLESS_POOL, elite: ENDLESS_POOL,
+    boss: { id: ENDLESS_BOSSES[(t - 1) % ENDLESS_BOSSES.length], level: base + 4 },
+  };
+}
+
+/** 진화 단계 목록: [[1], [2], [3]] / 이브이는 [[133], [134,135,136,196,197]] */
+export function evoLine(id: number): number[][] {
+  let root = id;
+  for (;;) {
+    const prev = Object.values(SPECIES).find(s => s.evo && (s.evo.to === root || s.evo.choices?.includes(root)));
+    if (!prev) break;
+    root = prev.id;
+  }
+  const stages: number[][] = [[root]];
+  for (;;) {
+    const next = stages[stages.length - 1].flatMap(i => { const e = SPECIES[i].evo; return e ? (e.choices ?? [e.to]) : []; });
+    if (!next.length) break;
+    stages.push(next);
+  }
+  return stages;
+}
 
 export type ItemKey = "potion" | "superPotion" | "ball" | "candy" | "revive";
 export const ITEMS: Record<ItemKey, { name: string; emoji: string; price: number; desc: string }> = {
