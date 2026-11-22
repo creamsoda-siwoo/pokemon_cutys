@@ -1,5 +1,5 @@
 // 밸런스 확인용 시뮬레이션: npx tsx scripts/sim.ts
-import { REGIONS } from "../lib/data";
+import { REGIONS, STARTERS } from "../lib/data";
 import { makeMon, monMoves, performMove, enemyChoose, stats, Fighter, sp, effectiveSpeed, giveXp, xpReward, canEvolve, evolve, Mon } from "../lib/engine";
 import { effectiveness } from "../lib/data";
 
@@ -18,7 +18,7 @@ function duel(p: Mon, e: Mon): boolean {
   return false;
 }
 
-for (const starter of [1, 4, 7, 25]) {
+for (const starter of STARTERS) {
   const res: string[] = [];
   let p = makeMon(starter, 5);
   for (let r = 0; r < REGIONS.length; r++) {

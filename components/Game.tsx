@@ -173,7 +173,7 @@ export default function Game() {
   useEffect(() => { if (gold >= 500) unlock("rich"); }, [gold, unlock]);
   const dexCount = meta.dex.length;
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { if (dexCount >= 20) unlock("dex20"); }, [dexCount, unlock]);
+  useEffect(() => { if (dexCount >= 20) unlock("dex20"); if (dexCount >= 50) unlock("dex50"); }, [dexCount, unlock]);
 
   const difficulty = DIFFICULTY[run?.difficulty ?? "normal"];
   /** 적 포켓몬 생성: 난이도 배율 + 색이 다른 포켓몬 확률 */
@@ -569,6 +569,7 @@ export default function Game() {
     unlock("first_win");
     if (b.caught) unlock("catch");
     if (b.kind === "boss" && !isEndless(run.region)) unlock(`boss_${e.id}`);
+    if (b.kind === "boss" && [249, 384, 151].includes(e.id)) unlock("legend");
     if (b.kind === "elite" || b.kind === "boss" || b.kind === "trainer") {
       b.dropItem = b.kind === "trainer" ? pick(STONE_KEYS) : pick<ItemKey>(["superPotion", "candy", "revive", "ball"]);
       msgs.push(`${ITEMS[b.dropItem].emoji} ${ITEMS[b.dropItem].name}을(를) 얻었다!`);

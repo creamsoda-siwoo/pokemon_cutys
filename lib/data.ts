@@ -119,9 +119,34 @@ export const SPECIES: Record<number, Species> = Object.fromEntries([
   S(37, "식스테일", "불꽃", 38, 41, 40, 65, [38, 14]), S(38, "나인테일", "불꽃", 73, 76, 75, 100),
   S(147, "미뇽", "드래곤", 41, 64, 45, 50, [148, 12]), S(148, "신뇽", "드래곤", 61, 84, 65, 70, [149, 18]), S(149, "망나뇽", "드래곤", 91, 134, 95, 80),
   S(150, "뮤츠", "에스퍼", 106, 110, 90, 130),
+  // ===== 새 포켓몬 =====
+  // 새 스타터 (2세대)
+  S(152, "치코리타", "풀", 45, 49, 65, 45, [153, 7]), S(153, "베이리프", "풀", 60, 62, 80, 60, [154, 14]), S(154, "메가니움", "풀", 80, 83, 100, 80),
+  S(155, "브케인", "불꽃", 39, 60, 43, 65, [156, 7]), S(156, "마그케인", "불꽃", 58, 80, 58, 80, [157, 14]), S(157, "블레이범", "불꽃", 78, 109, 78, 100),
+  S(158, "리아코", "물", 50, 65, 64, 43, [159, 7]), S(159, "엘리게이", "물", 65, 80, 80, 58, [160, 14]), S(160, "장크로다일", "물", 85, 105, 100, 78),
+  // 숲 (달의돌로 진화)
+  S(35, "삐삐", "노말", 70, 45, 48, 35), S(36, "픽시", "노말", 95, 85, 73, 60),
+  S(39, "푸린", "노말", 115, 45, 20, 20), S(40, "푸크린", "노말", 140, 85, 45, 45),
+  S(52, "나옹", "노말", 40, 45, 35, 90, [53, 11]), S(53, "페르시온", "노말", 65, 70, 60, 115),
+  // 호수
+  S(118, "콘치", "물", 45, 67, 60, 63, [119, 10]), S(119, "왕콘치", "물", 80, 92, 65, 68),
+  S(81, "코일", "전기", 25, 50, 70, 45, [82, 11]), S(82, "레어코일", "전기", 50, 95, 95, 70),
+  S(258, "물짱이", "물", 50, 70, 50, 40, [259, 8]), S(259, "늪짱이", "물", 70, 85, 70, 50, [260, 15]), S(260, "대짱이", "물", 100, 110, 90, 60),
+  S(179, "메리프", "전기", 55, 50, 40, 35, [180, 8]), S(180, "보송송", "전기", 70, 70, 55, 45, [181, 15]), S(181, "전룡", "전기", 90, 105, 85, 55),
+  // 동굴
+  S(355, "해골몽", "고스트", 20, 40, 90, 25, [356, 12]), S(356, "미라몽", "고스트", 40, 70, 130, 25),
+  S(280, "랄토스", "에스퍼", 28, 35, 25, 40, [281, 9]), S(281, "킬리아", "에스퍼", 38, 60, 35, 50, [282, 15]), S(282, "가디안", "에스퍼", 68, 115, 65, 80),
+  S(447, "리오르", "격투", 40, 70, 40, 60, [448, 12]), S(448, "루카리오", "격투", 70, 115, 70, 90),
+  S(302, "깜까미", "고스트", 50, 75, 75, 50),
+  // 화산
+  S(77, "포니타", "불꽃", 50, 85, 55, 90, [78, 12]), S(78, "날쌩마", "불꽃", 65, 100, 70, 105),
+  S(371, "아공이", "드래곤", 45, 75, 60, 50, [372, 12]), S(372, "쉘곤", "드래곤", 65, 95, 100, 50, [373, 18]), S(373, "보만다", "드래곤", 95, 135, 80, 100),
+  S(443, "딥상어동", "드래곤", 58, 70, 45, 42, [444, 12]), S(444, "한바이트", "드래곤", 68, 90, 65, 82, [445, 18]), S(445, "한카리아스", "드래곤", 108, 130, 95, 102),
+  // 전설 · 환상 (무한의 탑 보스)
+  S(249, "루기아", "에스퍼", 106, 90, 130, 110), S(384, "레쿠쟈", "드래곤", 105, 150, 90, 95), S(151, "뮤", "에스퍼", 100, 100, 100, 100),
 ].map(s => [s.id, s]));
 
-export const STARTERS = [1, 4, 7, 25];
+export const STARTERS = [1, 4, 7, 25, 152, 155, 158];
 
 export const art = (id: number, shiny = false) =>
   `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/${shiny ? "shiny/" : ""}${id}.png`;
@@ -144,6 +169,8 @@ export const ACHIEVEMENTS: { id: string; emoji: string; name: string; desc: stri
   { id: "shiny", emoji: "🌟", name: "반짝반짝", desc: "색이 다른 포켓몬을 동료로 맞이하기" },
   { id: "rich", emoji: "💰", name: "부자", desc: "골드 500G 모으기" },
   { id: "dex20", emoji: "📖", name: "도감 수집가", desc: "도감 20종 채우기" },
+  { id: "dex50", emoji: "📚", name: "포켓몬 박사", desc: "도감 50종 채우기" },
+  { id: "legend", emoji: "🌈", name: "전설과의 만남", desc: "무한의 탑에서 루기아·레쿠쟈·뮤 중 하나 쓰러뜨리기" },
   { id: "boss_143", emoji: "😴", name: "숲의 주인", desc: "잠만보 쓰러뜨리기" },
   { id: "boss_130", emoji: "🌊", name: "호수의 주인", desc: "갸라도스 쓰러뜨리기" },
   { id: "boss_94", emoji: "👻", name: "동굴의 주인", desc: "팬텀 쓰러뜨리기" },
@@ -163,21 +190,22 @@ export interface Region {
 }
 export const REGIONS: Region[] = [
   { name: "초록빛 숲", emoji: "🌳", bg: "linear-gradient(#bbf7d0,#4ade80)", levels: [2, 4],
-    wild: [16, 19, 43, 133], elite: [133, 43], boss: { id: 143, level: 5 } },
+    wild: [16, 19, 43, 133, 35, 39, 52], elite: [133, 43, 52], boss: { id: 143, level: 5 } },
   { name: "반짝이는 호수", emoji: "🌊", bg: "linear-gradient(#bae6fd,#38bdf8)", levels: [6, 8],
-    wild: [54, 60, 129, 100, 79], elite: [55, 61], boss: { id: 130, level: 11 } },
+    wild: [54, 60, 129, 100, 79, 118, 81, 258, 179], elite: [55, 61, 119, 82, 259], boss: { id: 130, level: 11 } },
   { name: "으스스한 동굴", emoji: "🦇", bg: "linear-gradient(#c4b5fd,#4c1d95)", levels: [10, 12],
-    wild: [92, 66, 63, 93], elite: [67, 64], boss: { id: 94, level: 15 } },
+    wild: [92, 66, 63, 93, 355, 280, 447, 302], elite: [67, 64, 356, 281, 448], boss: { id: 94, level: 15 } },
   { name: "불타는 화산", emoji: "🌋", bg: "linear-gradient(#fed7aa,#dc2626)", levels: [14, 16],
-    wild: [58, 37, 147, 148], elite: [59, 38], boss: { id: 149, level: 17 } },
+    wild: [58, 37, 147, 148, 77, 371, 443], elite: [59, 38, 78, 372, 444], boss: { id: 149, level: 17 } },
   { name: "최후의 탑", emoji: "🗼", bg: "linear-gradient(#e9d5ff,#1e1b4b)", levels: [20, 20],
     wild: [], elite: [], boss: { id: 150, level: 21 } },
 ];
 export const FLOORS_PER_REGION = 6; // 마지막 층은 보스
 
 // ---------- 무한의 탑 (클리어 후 도전) ----------
-const ENDLESS_POOL = [18, 20, 45, 55, 61, 80, 101, 134, 135, 136, 196, 197, 59, 38, 68, 65, 93, 148, 26, 3, 6, 9];
-const ENDLESS_BOSSES = [143, 130, 94, 149, 6, 9, 3, 65, 68, 150];
+const ENDLESS_POOL = [18, 20, 45, 55, 61, 80, 101, 134, 135, 136, 196, 197, 59, 38, 68, 65, 93, 148, 26, 3, 6, 9,
+  154, 157, 160, 36, 40, 53, 119, 82, 260, 181, 356, 282, 448, 302, 78, 373, 445];
+const ENDLESS_BOSSES = [143, 130, 94, 149, 249, 6, 9, 3, 384, 65, 68, 373, 445, 151, 150];
 export const isEndless = (idx: number) => idx >= REGIONS.length;
 export const endlessStage = (idx: number) => idx - REGIONS.length + 1;
 export function getRegion(idx: number): Region {
@@ -209,7 +237,7 @@ export function evoLine(id: number): number[][] {
 }
 
 export type ItemKey = "potion" | "superPotion" | "ball" | "candy" | "revive"
-  | "fireStone" | "waterStone" | "thunderStone" | "leafStone";
+  | "fireStone" | "waterStone" | "thunderStone" | "leafStone" | "moonStone";
 export const ITEMS: Record<ItemKey, { name: string; emoji: string; price: number; desc: string }> = {
   potion: { name: "상처약", emoji: "🧪", price: 30, desc: "HP 50% 회복" },
   superPotion: { name: "고급상처약", emoji: "💊", price: 70, desc: "HP 전부 회복" },
@@ -220,9 +248,10 @@ export const ITEMS: Record<ItemKey, { name: string; emoji: string; price: number
   waterStone: { name: "물의돌", emoji: "💧", price: 150, desc: "이브이 → 샤미드 진화" },
   thunderStone: { name: "천둥의돌", emoji: "⚡", price: 150, desc: "이브이·피카츄 진화" },
   leafStone: { name: "리프의돌", emoji: "🍃", price: 150, desc: "냄새꼬 → 라플레시아 진화" },
+  moonStone: { name: "달의돌", emoji: "🌙", price: 150, desc: "삐삐 → 픽시, 푸린 → 푸크린 진화" },
 };
 export const EMPTY_ITEMS: Record<ItemKey, number> = {
-  potion: 0, superPotion: 0, ball: 0, candy: 0, revive: 0, fireStone: 0, waterStone: 0, thunderStone: 0, leafStone: 0,
+  potion: 0, superPotion: 0, ball: 0, candy: 0, revive: 0, fireStone: 0, waterStone: 0, thunderStone: 0, leafStone: 0, moonStone: 0,
 };
 
 /** 진화의 돌: 돌 → { 포켓몬: 진화 후 } (레벨과 상관없이 바로 진화) */
@@ -231,13 +260,14 @@ export const STONES: Partial<Record<ItemKey, Record<number, number>>> = {
   waterStone: { 133: 134 },
   thunderStone: { 133: 135, 25: 26 },
   leafStone: { 44: 45 },
+  moonStone: { 35: 36, 39: 40 },
 };
 export const STONE_KEYS = Object.keys(STONES) as ItemKey[];
 
 // ---------- 라이벌 ----------
 export const RIVAL_NAME = "하늘";
 /** 플레이어 스타터를 이기는 타입의 스타터 */
-export const RIVAL_STARTER: Record<number, number> = { 1: 4, 4: 7, 7: 1, 25: 1 };
+export const RIVAL_STARTER: Record<number, number> = { 1: 4, 4: 7, 7: 1, 25: 1, 152: 155, 155: 158, 158: 152 };
 /** 진화형을 따라가서 해당 레벨에 맞는 모습 */
 export function formAtLevel(id: number, level: number): number {
   let cur = id;
