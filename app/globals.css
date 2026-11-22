@@ -228,3 +228,9 @@ h3 { font-size: 1rem; }
 .evomon img { width: 56px; height: 56px; object-fit: contain; }
 .evomon.cur { border: 2px solid var(--tc); background: color-mix(in srgb, var(--tc) 12%, var(--card)); font-weight: 700; }
 @media (max-width: 560px) { .movelist { grid-template-columns: 1fr; } .detail-head img { width: 96px; height: 96px; } }
+
+/* 라이벌 · 진화의 돌 */
+.rivaltag { background: linear-gradient(90deg, #0ea5e9, #6366f1) !important; letter-spacing: 1px; }
+.choice.c-rival { border-color: #0ea5e966; background: linear-gradient(180deg, #bae6fd55, var(--card)); }
+.rivalprev { width: 90px; height: 90px; }
+.stonebtn { border-color: #a855f7 !important; background: linear-gradient(90deg, #f3e8ff, #fff) !important; color: #111 !important; }

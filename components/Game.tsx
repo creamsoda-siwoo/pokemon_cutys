@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ACHIEVEMENTS, art, DIFFICULTY, Difficulty, effectiveness, endlessStage, evoLine, FLOORS_PER_REGION, getRegion, isEndless,
-  ItemKey, ITEMS, MOVES, REGIONS, SHINY_RATE,
+  EMPTY_ITEMS, formAtLevel, ItemKey, ITEMS, MOVES, REGIONS, RIVAL_NAME, RIVAL_STARTER, SHINY_RATE, STONE_KEYS, STONES,
   SPECIES, STARTERS, TYPE_COLOR, Type,
 } from "@/lib/data";
 import {
@@ -22,7 +22,7 @@ function evSound(ev?: { text: string; hit?: string; dmg?: { color: string; text:
 }
 
 // ---------------- 타입 ----------------
-type NodeKind = "battle" | "elite" | "camp" | "shop" | "event" | "boss";
+type NodeKind = "battle" | "elite" | "camp" | "shop" | "event" | "boss" | "rival";
 const TYPES = Object.keys(TYPE_COLOR) as Type[];
 type Screen = "title" | "starter" | "map" | "battle" | "camp" | "shop" | "event" | "recruit" | "evolve" | "gameover" | "victory";
 
@@ -30,17 +30,19 @@ interface Run {
   party: Mon[]; gold: number; items: Record<ItemKey, number>;
   region: number; floor: number; choices: NodeKind[]; wins: number; caught: number;
   difficulty?: Difficulty;
+  starter?: number; rivalWins?: number;
 }
 interface Meta { dex: number[]; bestRegion: number; clears: number; ach?: string[]; shinies?: number[]; bestEndless?: number }
-interface After { evos: string[]; recruit: Mon | null; next: "map" | "region" | "victory" | "stay" }
+interface After { evos: string[]; recruit: Mon | null; next: "map" | "region" | "victory" | "stay"; stoneTo?: number }
 
 interface Ev {
-  text: string; pHp: number; pIdx: number; eHp: number;
+  text: string; pHp: number; pIdx: number; eHp: number; eRef?: Mon;
   hit?: "p" | "e"; dmg?: { side: "p" | "e"; text: string; color: string }; ball?: boolean;
 }
 type Phase = "choose" | "anim" | "forceSwitch" | "won" | "lost";
 interface Battle {
-  kind: "wild" | "elite" | "boss";
+  kind: "wild" | "elite" | "boss" | "trainer";
+  queue: Mon[]; defeated: Mon[];
   party: Mon[]; active: number; pf: Fighter; ef: Fighter;
   items: Record<ItemKey, number>;
   events: Ev[]; evIdx: number; phase: Phase; outcome?: "won" | "lost" | "caught" | "switch";
@@ -54,6 +56,7 @@ const NODE_INFO: Record<NodeKind, { emoji: string; name: string; desc: string }>
   shop: { emoji: "🛒", name: "상점", desc: "아이템 구매" },
   event: { emoji: "🎁", name: "수상한 장소", desc: "무슨 일이 생길까?" },
   boss: { emoji: "👑", name: "보스", desc: "지역의 주인과 대결!" },
+  rival: { emoji: "🧢", name: `라이벌 ${RIVAL_NAME}`, desc: "트레이너 배틀! 이기면 진화의 돌" },
 };
 
 const MAX_PARTY = 4;
@@ -66,7 +69,7 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
 function genChoices(region: number, floor: number): NodeKind[] {
   if (floor >= FLOORS_PER_REGION - 1 || getRegion(region).wild.length === 0) return ["boss"];
-  const weights: [NodeKind, number][] = [["battle", 45], ["elite", floor >= 1 ? 16 : 0], ["camp", 12], ["shop", 12], ["event", 15]];
+  const weights: [NodeKind, number][] = [["battle", 45], ["elite", floor >= 1 ? 16 : 0], ["camp", 12], ["shop", 12], ["event", 15], ["rival", floor >= 2 ? 11 : 0]];
   const roll = () => {
     let r = rnd() * weights.reduce((a, [, w]) => a + w, 0);
     for (const [k, w] of weights) { if ((r -= w) < 0) return k; }
@@ -185,12 +188,15 @@ export default function Game() {
   // ---------- 진행 ----------
   function startRun(starterId: number) {
     const s = makeMon(starterId, 6);
-    const r: Run = { party: [s], gold: 100, items: { potion: 3, superPotion: 0, ball: 3, candy: 0, revive: 1 },
+    const r: Run = { party: [s], gold: 100, items: { ...EMPTY_ITEMS, potion: 3, ball: 3, revive: 1 }, starter: starterId,
       region: 0, floor: 0, choices: genChoices(0, 0), wins: 0, caught: 0, difficulty: diff };
     addDex(starterId);
     setRun(r); setScreen("map");
   }
-  function continueRun() { const r = load<Run | null>(SAVE_KEY, null); if (r) { setRun(r); setScreen("map"); } }
+  function continueRun() {
+    const r = load<Run | null>(SAVE_KEY, null);
+    if (r) { setRun({ ...r, items: { ...EMPTY_ITEMS, ...r.items } }); setScreen("map"); }
+  }
 
   function advance(r: Run): Run {
     const floor = r.floor + 1;
@@ -206,6 +212,16 @@ export default function Game() {
       else if (k === "elite") enemy = makeFoe(pick(reg.elite), reg.levels[1] + randInt(1, 2));
       else enemy = makeFoe(pick(reg.wild), randInt(reg.levels[0], reg.levels[1]));
       startBattle(k === "battle" ? "wild" : k, enemy);
+      return;
+    }
+    if (k === "rival") {
+      const size = run.region < 2 ? 2 : 3;
+      const ace = formAtLevel(RIVAL_STARTER[run.starter ?? 4] ?? 7, reg.levels[1] + 1);
+      const team = [...Array(size - 1)].map(() => makeFoe(formAtLevel(pick(reg.wild.length ? reg.wild : reg.elite), reg.levels[1]), reg.levels[1]));
+      team.forEach(m => { m.shiny = false; m.hp = stats(m).maxHp; });
+      team.push(makeFoe(ace, reg.levels[1] + 1));
+      team[team.length - 1].shiny = false; team[team.length - 1].hp = stats(team[team.length - 1]).maxHp;
+      startBattle("trainer", team[0], team.slice(1));
       return;
     }
     if (k === "camp") {
@@ -227,7 +243,7 @@ export default function Game() {
       setRun({ ...run, gold: run.gold + g });
       setEventView({ title: "🎁 보물상자!", text: `반짝이는 상자 안에 ${g}G가 들어 있었다!`, emoji: "💰" });
     } else if (r < 0.45) {
-      const key = pick<ItemKey>(["potion", "superPotion", "ball", "candy", "revive"]);
+      const key = pick<ItemKey>(["potion", "potion", "superPotion", "ball", "candy", "revive", ...(rnd() < 0.35 ? STONE_KEYS : [])]);
       setRun({ ...run, items: { ...run.items, [key]: run.items[key] + 1 } });
       setEventView({ title: "🎁 아이템 발견!", text: `풀숲에서 ${ITEMS[key].name}을(를) 주웠다!`, emoji: ITEMS[key].emoji });
     } else if (r < 0.65) {
@@ -310,12 +326,12 @@ export default function Game() {
     sfx("fanfare");
     const cur = run?.party.find(p => p.uid === uid);
     const e = cur && sp(cur).evo;
-    if (e) setTimeout(() => cry(to && e.choices?.includes(to) ? to : e.to), 900);
+    if (e) setTimeout(() => cry(to ?? e.to), 900);
     setEvoStage(2);
   }
   function evolveNext() {
     if (!after) return;
-    processAfter({ ...after, evos: after.evos.slice(1) });
+    processAfter({ ...after, evos: after.evos.slice(1), stoneTo: undefined });
   }
 
   // 영입
@@ -355,6 +371,14 @@ export default function Game() {
     if (k === "revive" && m.hp <= 0) { m.hp = Math.ceil(mx / 2); ok = true; }
     const msgs: string[] = [];
     if (k === "candy" && m.hp > 0) { levelUp(m, msgs); ok = true; }
+    const stoneTo = STONES[k]?.[m.id];
+    if (stoneTo) {
+      if (m.hp <= 0) { setToast("기절한 포켓몬에게는 쓸 수 없어요"); return; }
+      setRun({ ...run, items: { ...run.items, [k]: run.items[k] - 1 } });
+      setPartyOpen(false); unlock("stone");
+      processAfter({ evos: [m.uid], recruit: null, next: "stay", stoneTo });
+      return;
+    }
     if (!ok) { setToast("지금은 쓸 수 없어요"); return; }
     const items = { ...run.items, [k]: run.items[k] - 1 };
     setRun({ ...run, party, items });
@@ -377,23 +401,25 @@ export default function Game() {
   }
 
   // ================== 전투 ==================
-  function startBattle(kind: Battle["kind"], enemy: Mon) {
+  function startBattle(kind: Battle["kind"], enemy: Mon, queue: Mon[] = []) {
     if (!run) return;
     const party = clone(run.party);
     const active = party.findIndex(m => m.hp > 0);
     const b: Battle = {
       kind, party, active, pf: { mon: party[active], atkStage: 0, defStage: 0 }, ef: { mon: enemy, atkStage: 0, defStage: 0 },
-      items: { ...run.items }, events: [], evIdx: 0, phase: "anim", result: [], gold: 0,
+      items: { ...run.items }, events: [], evIdx: 0, phase: "anim", result: [], gold: 0, queue, defeated: [],
     };
     bRef.current = b;
     const intro = kind === "boss" ? `👑 ${getRegion(run.region).name}의 주인 ${sp(enemy).name}이(가) 나타났다!`
+      : kind === "trainer" ? `🧢 라이벌 ${RIVAL_NAME}이(가) 승부를 걸어왔다! "이번엔 내가 이길 거야!"`
       : kind === "elite" ? `💀 강해 보이는 ${sp(enemy).name}이(가) 앞을 막아섰다!`
       : `야생의 ${sp(enemy).name}이(가) 튀어나왔다!`;
     const shinyIntro = enemy.shiny ? `✨ 반짝반짝! 색이 다른 ${sp(enemy).name}이다! (이기면 꼭 동료가 돼요)` : null;
     b.events = [
-      { text: intro, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp },
+      { text: intro, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp, eRef: enemy },
+      ...(kind === "trainer" ? [{ text: `${RIVAL_NAME}은(는) ${sp(enemy).name}을(를) 내보냈다!`, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp, eRef: enemy }] : []),
       ...(shinyIntro ? [{ text: shinyIntro, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp }] : []),
-      { text: `가라, ${sp(b.pf.mon).name}!`, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp },
+      { text: `가라, ${sp(b.pf.mon).name}!`, pHp: b.pf.mon.hp, pIdx: active, eHp: enemy.hp, eRef: enemy },
     ];
     b.outcome = undefined;
     setScreen("battle");
@@ -435,7 +461,7 @@ export default function Game() {
     const b = bRef.current; if (!b || b.phase !== "choose") return;
     const evs: Ev[] = [];
     const push = (text: string, extra: Partial<Ev> = {}) =>
-      evs.push({ text, pHp: b.party[b.active].hp, pIdx: b.active, eHp: b.ef.mon.hp, ...extra });
+      evs.push({ text, pHp: b.party[b.active].hp, pIdx: b.active, eHp: b.ef.mon.hp, eRef: b.ef.mon, ...extra });
 
     const attack = (att: Fighter, def: Fighter, side: "p" | "e", moveIdx?: number) => {
       if (att.mon.hp <= 0 || def.mon.hp <= 0) return;
@@ -494,8 +520,18 @@ export default function Game() {
       }
     }
 
-    if (b.ef.mon.hp <= 0) b.outcome = "won";
-    else if (b.pf.mon.hp <= 0) b.outcome = b.party.some(m => m.hp > 0) ? "switch" : "lost";
+    const playerDown = () => b.pf.mon.hp <= 0 ? (b.party.some(m => m.hp > 0) ? "switch" as const : "lost" as const) : undefined;
+    if (b.ef.mon.hp <= 0) {
+      b.defeated.push(b.ef.mon);
+      if (b.queue.length) {
+        b.ef = { mon: b.queue.shift()!, atkStage: 0, defStage: 0 };
+        const last = b.queue.length === 0;
+        push(`${RIVAL_NAME}은(는) ${last ? "마지막으로 파트너 " : ""}${sp(b.ef.mon).name}을(를) 내보냈다!`);
+        b.outcome = playerDown();
+        const nid = b.ef.mon.id; setTimeout(() => cry(nid), 900);
+      } else b.outcome = "won";
+    }
+    else if (b.pf.mon.hp <= 0) b.outcome = playerDown();
     else b.outcome = undefined;
     if (b.outcome === "lost") push("눈앞이 깜깜해졌다…");
     b.events = evs; play();
@@ -504,30 +540,37 @@ export default function Game() {
   function forceSwitch(idx: number) {
     const b = bRef.current; if (!b) return;
     b.active = idx; b.pf = { mon: b.party[idx], atkStage: 0, defStage: 0 };
-    b.events = [{ text: `가라, ${sp(b.pf.mon).name}!`, pHp: b.pf.mon.hp, pIdx: idx, eHp: b.ef.mon.hp }];
+    b.events = [{ text: `가라, ${sp(b.pf.mon).name}!`, pHp: b.pf.mon.hp, pIdx: idx, eHp: b.ef.mon.hp, eRef: b.ef.mon }];
     b.outcome = undefined; play();
   }
 
   function winBattle() {
     const b = bRef.current; if (!b || !run) return;
     const e = b.ef.mon;
-    const xp = xpReward(e.level, b.kind);
+    const beaten = b.defeated.length ? b.defeated : [e];
+    const xp = beaten.reduce((a, m) => a + xpReward(m.level, b.kind), 0);
     const msgs: string[] = [];
-    if (!b.caught) msgs.push(`${sp(e).name}을(를) 쓰러뜨렸다!`);
+    if (b.kind === "trainer") {
+      msgs.push(`🧢 라이벌 ${RIVAL_NAME}과의 승부에서 이겼다!`);
+      msgs.push(`${RIVAL_NAME}: "으으… 다음엔 꼭 이길 거야! 이거 받아!"`);
+      const wins = (run.rivalWins ?? 0) + 1;
+      unlock("rival"); if (wins >= 3) setTimeout(() => unlock("rival3"), 2800);
+    } else if (!b.caught) msgs.push(`${sp(e).name}을(를) 쓰러뜨렸다!`);
     b.party.forEach((m, i) => {
       if (m.hp <= 0) return;
       const amt = i === b.active ? xp : Math.floor(xp * 0.6);
       msgs.push(`${sp(m).name}은(는) 경험치 ${amt}을(를) 얻었다.`);
       msgs.push(...giveXp(m, amt));
     });
-    b.gold = Math.floor(e.level * 5 * (b.kind === "boss" ? 5 : b.kind === "elite" ? 2 : 1) * difficulty.gold);
+    b.gold = Math.floor((b.kind === "trainer" ? beaten.reduce((a, m) => a + m.level * 8, 0)
+      : e.level * 5 * (b.kind === "boss" ? 5 : b.kind === "elite" ? 2 : 1)) * difficulty.gold);
     msgs.push(`💰 ${b.gold}G를 얻었다!`);
     msgs.push(`💚 승리 보너스: 파티의 HP가 ${Math.round(difficulty.heal * 100)}% 회복된다.`);
     unlock("first_win");
     if (b.caught) unlock("catch");
     if (b.kind === "boss" && !isEndless(run.region)) unlock(`boss_${e.id}`);
-    if (b.kind === "elite" || b.kind === "boss") {
-      b.dropItem = pick<ItemKey>(["superPotion", "candy", "revive", "ball"]);
+    if (b.kind === "elite" || b.kind === "boss" || b.kind === "trainer") {
+      b.dropItem = b.kind === "trainer" ? pick(STONE_KEYS) : pick<ItemKey>(["superPotion", "candy", "revive", "ball"]);
       msgs.push(`${ITEMS[b.dropItem].emoji} ${ITEMS[b.dropItem].name}을(를) 얻었다!`);
     }
     b.result = msgs; b.phase = "won"; rerender();
@@ -542,13 +585,14 @@ export default function Game() {
     let recruit: Mon | null = null;
     const e = b.ef.mon;
     if (b.caught) recruit = { ...e, xp: 0, status: undefined, foe: false, foeMul: undefined };
-    else if (b.kind !== "boss" && (e.shiny || rnd() < (b.kind === "elite" ? 0.5 : 0.35))) {
+    else if (b.kind !== "boss" && b.kind !== "trainer" && (e.shiny || rnd() < (b.kind === "elite" ? 0.5 : 0.35))) {
       recruit = makeMon(e.id, e.level); recruit.shiny = e.shiny;
       recruit.hp = Math.ceil(stats(recruit).maxHp * 0.6);
     }
     const evos = party.filter(canEvolve).map(m => m.uid);
     const lastRegion = run.region === REGIONS.length - 1;
-    setRun({ ...run, party, items, gold: run.gold + b.gold, wins: run.wins + 1 });
+    setRun({ ...run, party, items, gold: run.gold + b.gold, wins: run.wins + 1,
+      rivalWins: (run.rivalWins ?? 0) + (b.kind === "trainer" ? 1 : 0) });
     bRef.current = null;
     processAfter({ evos, recruit, next: b.kind === "boss" ? (lastRegion ? "victory" : "region") : "map" });
   }
@@ -701,6 +745,7 @@ export default function Game() {
                 <b>{NODE_INFO[k].name}</b>
                 <small>{k === "boss" ? `${SPECIES[region.boss.id].name} Lv.${region.boss.level}` : NODE_INFO[k].desc}</small>
                 {k === "boss" && <img src={art(region.boss.id)} alt="" className="bossprev" />}
+                {k === "rival" && <img src={art(formAtLevel(RIVAL_STARTER[run.starter ?? 4] ?? 7, region.levels[1] + 1))} alt="" className="bossprev rivalprev" />}
               </button>
             ))}
           </div>
@@ -772,7 +817,8 @@ export default function Game() {
             {evoStage === 0 && <>
               <h2>어라…!? {fromName}의 상태가…!</h2>
               <img className="bigart evo-glow" src={monArt(m)} alt="" />
-              {sp(m).evo?.choices ? <>
+              {after.stoneTo && <p>💎 진화의 돌이 반짝이기 시작했다!</p>}
+              {sp(m).evo?.choices && !after.stoneTo ? <>
                 <p>어떤 모습으로 진화할까? 하나를 골라주세요!</p>
                 <div className="evochoices">
                   {sp(m).evo!.choices!.map(id => (
@@ -783,7 +829,7 @@ export default function Game() {
                     </button>
                   ))}
                 </div>
-              </> : <button className="primary" onClick={() => { sfx("evolve"); setEvoStage(1); setTimeout(() => doEvolve(), 2200); }}>✨ 지켜보기</button>}
+              </> : <button className="primary" onClick={() => { sfx("evolve"); setEvoStage(1); setTimeout(() => doEvolve(after.stoneTo), 2200); }}>✨ 지켜보기</button>}
             </>}
             {evoStage === 1 && <>
               <h2>…!</h2>
@@ -837,7 +883,7 @@ export default function Game() {
           <div className="modal" onClick={e => e.stopPropagation()}>
             <h2>🎒 파티 · 가방</h2>
             <div className="bag">
-              {(Object.keys(ITEMS) as ItemKey[]).map(k => <span key={k}>{ITEMS[k].emoji} {ITEMS[k].name} x{run.items[k]}</span>)}
+              {(Object.keys(ITEMS) as ItemKey[]).filter(k => run.items[k] > 0).map(k => <span key={k}>{ITEMS[k].emoji} {ITEMS[k].name} x{run.items[k]}</span>)}
             </div>
             {run.party.map((m, i) => (
               <MonMini key={m.uid} m={m} active={i === 0} extra={
@@ -847,6 +893,9 @@ export default function Game() {
                   {i > 0 && <button onClick={() => setLead(i)}>⭐ 선두로</button>}
                   {(["potion", "superPotion", "revive", "candy"] as ItemKey[]).filter(k => run.items[k] > 0).map(k =>
                     <button key={k} onClick={() => applyItemOutside(k, i)}>{ITEMS[k].emoji} {ITEMS[k].name}</button>)}
+                  {STONE_KEYS.filter(k => run.items[k] > 0 && STONES[k]![m.id]).map(k =>
+                    <button key={k} className="stonebtn" onClick={() => applyItemOutside(k, i)}>
+                      {ITEMS[k].emoji} {ITEMS[k].name} → {SPECIES[STONES[k]![m.id]].name}</button>)}
                 </div>
               } />
             ))}
@@ -881,6 +930,7 @@ function DetailCard({ m, onClose }: { m: Mon; onClose: () => void }) {
             <h2>{m.shiny && "✨"}{s.name}</h2>
             <p><TypeBadge t={s.type} /> Lv.{m.level} <span className="muted small">· No.{String(s.id).padStart(3, "0")}</span></p>
             <p className="muted small">경험치 {m.xp} / {xpNeeded(m.level)}</p>
+            {STONE_KEYS.filter(k => STONES[k]![s.id]).map(k => <p key={k} className="small">{ITEMS[k].emoji} {ITEMS[k].name}을(를) 쓰면 {SPECIES[STONES[k]![s.id]].name}(으)로 진화</p>)}
             {s.evo && <p className="small">⭐ {s.evo.choices ? "Lv." + s.evo.level + "에 5가지 중 선택 진화" : `Lv.${s.evo.level}에 ${SPECIES[s.evo.to].name}(으)로 진화`}</p>}
           </div>
         </div>
@@ -936,7 +986,8 @@ function BattleView({ b, region, onAct, onForce, onSkip, onLeave, onLose }: {
   const anim = b.phase === "anim";
   const pIdx = anim && ev ? ev.pIdx : b.active;
   const pm = b.party[pIdx];
-  const em = b.ef.mon;
+  const em = anim && ev?.eRef ? ev.eRef : b.ef.mon;
+  const teamLeft = b.kind === "trainer" ? b.queue.length + (b.ef.mon.hp > 0 ? 1 : 0) : 0;
   const pHp = anim && ev ? ev.pHp : pm.hp;
   const eHp = anim && ev ? ev.eHp : em.hp;
   const hitKey = `${b.evIdx}-${ev?.hit ?? ""}`;
@@ -959,6 +1010,7 @@ function BattleView({ b, region, onAct, onForce, onSkip, onLeave, onLose }: {
           <div className="namecard">
             {b.kind === "boss" && <span className="bosstag">👑 BOSS</span>}
             {b.kind === "elite" && <span className="bosstag elite">💀 강적</span>}
+            {b.kind === "trainer" && <span className="bosstag rivaltag">🧢 {RIVAL_NAME} {"●".repeat(teamLeft)}{"○".repeat(b.defeated.length)}</span>}
             {em.shiny && <span className="bosstag shinytag">✨ 색이 다름</span>}
             <b>{sp(em).name}</b> <small>Lv.{em.level}</small> <TypeBadge t={sp(em).type} />
             {em.status === "burn" && " 🔥"}{em.status === "paralyze" && " ⚡"}
@@ -1009,12 +1061,12 @@ function BattleView({ b, region, onAct, onForce, onSkip, onLeave, onLose }: {
           {tab === "bag" && (
             <div className="moves">
               {(["potion", "superPotion", "ball"] as ItemKey[]).map(k => {
-                const disabled = b.items[k] <= 0 || (k === "ball" && b.kind === "boss") ||
+                const disabled = b.items[k] <= 0 || (k === "ball" && (b.kind === "boss" || b.kind === "trainer")) ||
                   (k !== "ball" && pm.hp >= stats(pm).maxHp);
                 return (
                   <button key={k} className="move" disabled={disabled} onClick={() => { setTab("moves"); onAct({ kind: "item", key: k }); }}>
                     <b>{ITEMS[k].emoji} {ITEMS[k].name} x{b.items[k]}</b>
-                    <small>{k === "ball" ? (b.kind === "boss" ? "보스는 잡을 수 없어요" : `포획 확률 약 ${Math.round(catchChance(em) * 100)}%`) : ITEMS[k].desc}</small>
+                    <small>{k === "ball" ? (b.kind === "boss" ? "보스는 잡을 수 없어요" : b.kind === "trainer" ? "트레이너의 포켓몬은 잡을 수 없어요" : `포획 확률 약 ${Math.round(catchChance(em) * 100)}%`) : ITEMS[k].desc}</small>
                   </button>
                 );
               })}

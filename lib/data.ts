@@ -152,6 +152,9 @@ export const ACHIEVEMENTS: { id: string; emoji: string; name: string; desc: stri
   { id: "hard_clear", emoji: "🔥", name: "진정한 챔피언", desc: "어려움 난이도로 클리어" },
   { id: "endless_1", emoji: "♾️", name: "끝없는 도전", desc: "무한의 탑 1구역 돌파" },
   { id: "endless_5", emoji: "🌌", name: "탑의 전설", desc: "무한의 탑 5구역 돌파" },
+  { id: "stone", emoji: "💎", name: "돌의 힘", desc: "진화의 돌로 포켓몬 진화시키기" },
+  { id: "rival", emoji: "🧢", name: "라이벌 격파", desc: "라이벌 하늘에게 이기기" },
+  { id: "rival3", emoji: "🤝", name: "영원한 라이벌", desc: "라이벌 하늘에게 3번 이기기" },
 ];
 
 export interface Region {
@@ -205,14 +208,45 @@ export function evoLine(id: number): number[][] {
   return stages;
 }
 
-export type ItemKey = "potion" | "superPotion" | "ball" | "candy" | "revive";
+export type ItemKey = "potion" | "superPotion" | "ball" | "candy" | "revive"
+  | "fireStone" | "waterStone" | "thunderStone" | "leafStone";
 export const ITEMS: Record<ItemKey, { name: string; emoji: string; price: number; desc: string }> = {
   potion: { name: "상처약", emoji: "🧪", price: 30, desc: "HP 50% 회복" },
   superPotion: { name: "고급상처약", emoji: "💊", price: 70, desc: "HP 전부 회복" },
   ball: { name: "몬스터볼", emoji: "🔴", price: 40, desc: "야생 포켓몬 포획 시도" },
   candy: { name: "이상한사탕", emoji: "🍬", price: 120, desc: "레벨 1 상승" },
   revive: { name: "기력의조각", emoji: "💎", price: 100, desc: "기절한 포켓몬 HP 50%로 부활" },
+  fireStone: { name: "불꽃의돌", emoji: "🔥", price: 150, desc: "이브이·식스테일·가디 진화" },
+  waterStone: { name: "물의돌", emoji: "💧", price: 150, desc: "이브이 → 샤미드 진화" },
+  thunderStone: { name: "천둥의돌", emoji: "⚡", price: 150, desc: "이브이·피카츄 진화" },
+  leafStone: { name: "리프의돌", emoji: "🍃", price: 150, desc: "냄새꼬 → 라플레시아 진화" },
 };
+export const EMPTY_ITEMS: Record<ItemKey, number> = {
+  potion: 0, superPotion: 0, ball: 0, candy: 0, revive: 0, fireStone: 0, waterStone: 0, thunderStone: 0, leafStone: 0,
+};
+
+/** 진화의 돌: 돌 → { 포켓몬: 진화 후 } (레벨과 상관없이 바로 진화) */
+export const STONES: Partial<Record<ItemKey, Record<number, number>>> = {
+  fireStone: { 133: 136, 37: 38, 58: 59 },
+  waterStone: { 133: 134 },
+  thunderStone: { 133: 135, 25: 26 },
+  leafStone: { 44: 45 },
+};
+export const STONE_KEYS = Object.keys(STONES) as ItemKey[];
+
+// ---------- 라이벌 ----------
+export const RIVAL_NAME = "하늘";
+/** 플레이어 스타터를 이기는 타입의 스타터 */
+export const RIVAL_STARTER: Record<number, number> = { 1: 4, 4: 7, 7: 1, 25: 1 };
+/** 진화형을 따라가서 해당 레벨에 맞는 모습 */
+export function formAtLevel(id: number, level: number): number {
+  let cur = id;
+  for (;;) {
+    const e = SPECIES[cur].evo;
+    if (!e || e.choices || level < e.level) return cur;
+    cur = e.to;
+  }
+}
 
 // 이브이는 진화할 때 5가지 중 하나를 고를 수 있다
 SPECIES[133].evo!.choices = [134, 135, 136, 196, 197];

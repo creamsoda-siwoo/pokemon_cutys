@@ -39,8 +39,8 @@ export function makeMon(id: number, level: number, boss = false, foe = false): M
 }
 
 export const xpNeeded = (level: number) => 12 + level * 10;
-export const xpReward = (enemyLevel: number, kind: "wild" | "elite" | "boss") =>
-  Math.floor(enemyLevel * 8 * (kind === "boss" ? 3 : kind === "elite" ? 1.6 : 1));
+export const xpReward = (enemyLevel: number, kind: "wild" | "elite" | "boss" | "trainer") =>
+  Math.floor(enemyLevel * 8 * (kind === "boss" ? 3 : kind === "elite" || kind === "trainer" ? 1.4 : 1));
 
 export const monMoves = (m: Mon): Move[] => movesFor(sp(m).type, m.level).map(n => MOVES[n]);
 
@@ -72,7 +72,7 @@ export function evolve(m: Mon, to?: number) {
   const s = sp(m);
   if (!s.evo) return;
   const ratio = m.hp / stats(m).maxHp;
-  m.id = to && s.evo.choices?.includes(to) ? to : s.evo.to;
+  m.id = to ?? s.evo.to;
   m.hp = Math.max(1, Math.round(stats(m).maxHp * ratio));
 }
 
